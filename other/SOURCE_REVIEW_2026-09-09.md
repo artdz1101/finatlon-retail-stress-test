@@ -1,7 +1,7 @@
 # Source review — 2026-09-09
 
 ## Current numeric source
-Use `dataset_vtb_main_v2.xlsx` for calculations.
+Use `other/dataset_vtb_main_v2.xlsx` for calculations.
 
 It contains six reporting dates from 31.12.2023 through 30.06.2026 and four products per date.
 

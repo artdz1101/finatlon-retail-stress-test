@@ -21,6 +21,7 @@ import pandas as pd
 
 PRODUCTS = ["Mortgage", "Consumer", "Auto", "Cards"]
 RISKIER_PRODUCTS = ["Consumer", "Auto", "Cards"]
+SCENARIO_ORDER = ["Base", "Moderate", "Severe", "Structural", "Combined"]
 
 ALIASES = {
     "Отчетная дата": "report_date", "Report date": "report_date", "report_date": "report_date",
@@ -53,6 +54,9 @@ class ModelConfig:
     reverse_stress: Mapping[str, float]
     qa_tolerance: float
     output_dir: str
+    research_title: str = "Retail portfolio risk-return stress testing"
+    portfolio_nature: str = "Synthetic four-product retail credit portfolio calibrated on public data"
+    primary_research_question: str = "When does additional modeled income cease to compensate for higher credit losses?"
 
 
 def load_config(path: Path) -> ModelConfig:
@@ -73,6 +77,9 @@ def load_config(path: Path) -> ModelConfig:
         reverse_stress=raw.get("reverse_stress", {}),
         qa_tolerance=float(raw.get("qa_tolerance", 1e-8)),
         output_dir=raw.get("output_dir", "outputs"),
+        research_title=raw.get("research_title", "Retail portfolio risk-return stress testing"),
+        portfolio_nature=raw.get("portfolio_nature", "Synthetic four-product retail credit portfolio calibrated on public data"),
+        primary_research_question=raw.get("primary_research_question", "When does additional modeled income cease to compensate for higher credit losses?"),
     )
 
 
@@ -123,6 +130,11 @@ def validate_data(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
 
     dup = int(x.duplicated(["report_date", "product"]).sum())
     add("duplicate report_date/product", "PASS" if dup == 0 else "FAIL", str(dup))
+    numeric_columns = [c for c in REQUIRED if c not in {"report_date", "product"}]
+    missing_numeric = int(x[numeric_columns].isna().sum().sum())
+    add("complete numeric inputs", "PASS" if missing_numeric == 0 else "FAIL", f"missing_cells={missing_numeric}")
+    finite_numeric = bool(np.isfinite(x[numeric_columns].to_numpy(dtype=float)).all())
+    add("finite numeric inputs", "PASS" if finite_numeric else "FAIL", f"all_finite={finite_numeric}")
     base = x[x.report_date == cfg.baseline_date]
     missing = sorted(set(cfg.products) - set(base["product"]))
     add("baseline products present", "PASS" if not missing else "FAIL", f"missing={missing}")
@@ -141,6 +153,18 @@ def validate_data(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
     add("baseline four-product total", "INFO", f"RUB_bn={base.exposure.sum():.1f}")
 
     history = x[(x.report_date >= cfg.history_start_date) & (x.report_date <= cfg.history_end_date)]
+    panel_ok = all(set(g["product"]) == set(cfg.products) and len(g) == len(cfg.products) for _, g in history.groupby("report_date"))
+    add("complete four-product history panel", "PASS" if panel_ok else "FAIL", f"rows={len(history)}, dates={history.report_date.nunique()}")
+    bounds_ok = bool(
+        not history.empty
+        and history.report_date.min() == cfg.history_start_date
+        and history.report_date.max() == cfg.history_end_date
+    )
+    add(
+        "configured history bounds present",
+        "PASS" if bounds_ok else "FAIL",
+        f"start={history.report_date.min().date() if not history.empty else 'NA'}, end={history.report_date.max().date() if not history.empty else 'NA'}",
+    )
     add("history reporting dates", "INFO", f"n_dates={history.report_date.nunique()}, start={history.report_date.min().date()}, end={history.report_date.max().date()}")
     add("history design suitability", "INFO", "Suitable for scenario/sensitivity/reverse stress; not sufficient for robust regression/ML/tail inference")
 
@@ -161,17 +185,34 @@ def data_adequacy_report(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
         "value": f"{h.report_date.nunique()} reporting dates / {len(h)} product rows",
         "assessment": "adequate for transparent scenario, sensitivity and reverse stress; inadequate for robust econometric estimation"
     }]
+    numeric_columns = [c for c in REQUIRED if c not in {"report_date", "product"}]
+    rows.append({
+        "item": "numeric completeness",
+        "value": f"missing_cells={int(h[numeric_columns].isna().sum().sum())}",
+        "assessment": "complete for the configured window" if not h[numeric_columns].isna().any().any() else "missing inputs require reconciliation",
+    })
     for p in cfg.products:
         g = h[h["product"] == p]
+        primary_cc = g.loc[g.cc_primary_calibration, "credit_cost_recomputed"]
         rows.append({
             "item": p,
-            "value": f"n={len(g)}, primary_cc_n={int(g.cc_primary_calibration.sum())}",
+            "value": (
+                f"n={len(g)}, primary_cc_n={int(g.cc_primary_calibration.sum())}, "
+                f"primary_cc_range={primary_cc.min():.4%}..{primary_cc.max():.4%}, "
+                f"pricing_range={g.product_rate.min():.2%}..{g.product_rate.max():.2%}, "
+                f"funding_range={g.funding_rate.min():.2%}..{g.funding_rate.max():.2%}"
+            ),
             "assessment": "credit-cost calibration sample is short; scenario coefficients remain working assumptions"
         })
     rows.append({
         "item": "known auxiliary history",
         "value": "30.06.2024 exposure reconstruction; 31.12.2024 CC depends on that prior exposure",
         "assessment": "excluded from primary CC sigma calibration unless later source verification upgrades the rows"
+    })
+    rows.append({
+        "item": "2026H1 structural break",
+        "value": "Pochta Bank integration affects changes into the baseline date",
+        "assessment": "30.06.2026 remains a usable snapshot; changes into it are not interpreted as purely organic dynamics",
     })
     return pd.DataFrame(rows)
 
@@ -285,13 +326,19 @@ def scenario_summary(product_results: pd.DataFrame, horizon_years: float) -> pd.
         risk_adjusted_financial_result_bn=("risk_adjusted_financial_result_bn", "sum"),
     )
     g["credit_risk_adjusted_spread"] = g.risk_adjusted_financial_result_bn / g.exposure_bn / horizon_years
+    g["scenario"] = pd.Categorical(g["scenario"], categories=SCENARIO_ORDER, ordered=True)
+    g = g.sort_values("scenario").reset_index(drop=True)
+    g["scenario"] = g["scenario"].astype(str)
     return g
 
 
 def structural_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
     rows = []
     step = float(cfg.reverse_stress.get("share_step", 0.001))
-    for scenario, g0 in product_results.groupby("scenario"):
+    for scenario in SCENARIO_ORDER:
+        g0 = product_results[product_results["scenario"] == scenario]
+        if g0.empty:
+            continue
         g = g0.set_index("product")
         total = float(g.exposure.sum())
         base_w = (g.exposure / total).to_dict()
@@ -315,7 +362,10 @@ def structural_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> p
 def factor_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
     rows = []
     h = cfg.horizon_years
-    for scenario, g0 in product_results.groupby("scenario"):
+    for scenario in SCENARIO_ORDER:
+        g0 = product_results[product_results["scenario"] == scenario]
+        if g0.empty:
+            continue
         g = g0.set_index("product")
         total = float(g.exposure.sum())
         base_result = float(g.risk_adjusted_financial_result_bn.sum())
@@ -336,36 +386,48 @@ def reverse_stress(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFr
     rows = []
     boundary = cfg.critical_result_bn
     h = cfg.horizon_years
-    for scenario, g0 in product_results.groupby("scenario"):
+    for scenario in SCENARIO_ORDER:
+        g0 = product_results[product_results["scenario"] == scenario]
+        if g0.empty:
+            continue
         g = g0.set_index("product")
         total = float(g.exposure.sum())
         base_result = float(g.risk_adjusted_financial_result_bn.sum())
         pre_credit = float(((g.product_rate - g.funding_rate) * g.exposure * h).sum())
         base_credit_loss = float((g.credit_cost * g.exposure * h).sum())
-        mult = (pre_credit - boundary) / base_credit_loss if base_credit_loss > 0 else math.nan
-        if math.isnan(mult):
+        solved_mult = (pre_credit - boundary) / base_credit_loss if base_credit_loss > 0 else math.nan
+        if math.isnan(solved_mult):
+            mult = math.nan
             status = "NO_CREDIT_LOSS_BASE"
-        elif mult < 0:
+        elif solved_mult < 0:
+            mult = math.nan
             status = "NO_NONNEGATIVE_SOLUTION"
-        elif base_result <= boundary and mult < 1.0:
-            status = "THRESHOLD_BELOW_CURRENT_1X"
         else:
+            mult = solved_mult
+        if not math.isnan(mult) and base_result <= boundary and mult < 1.0:
+            status = "THRESHOLD_BELOW_CURRENT_1X"
+        elif not math.isnan(mult):
             status = "FEASIBLE"
         rows.append({"scenario": scenario, "reverse_type": "portfolio_credit_cost_multiplier", "target_product": "ALL", "threshold": mult, "threshold_unit": "x", "boundary_result_bn": boundary, "base_result_bn": base_result, "status": status})
 
         mortgage_spread = float(g.loc["Mortgage", "credit_risk_adjusted_spread"])
         weights = (g.exposure / total).to_dict()
+        for p in PRODUCTS:
+            solved_break_even_cc = float(g.loc[p, "product_rate"] - g.loc[p, "funding_rate"])
+            if solved_break_even_cc < 0:
+                own_break_even_cc, own_status = math.nan, "NO_NONNEGATIVE_BREAK_EVEN"
+            else:
+                own_break_even_cc, own_status = solved_break_even_cc, "FEASIBLE"
+            rows.append({"scenario": scenario, "reverse_type": "product_break_even_credit_cost", "target_product": p, "threshold": own_break_even_cc, "threshold_unit": "annual_rate", "boundary_result_bn": boundary, "base_result_bn": base_result, "status": own_status})
         for p in RISKIER_PRODUCTS:
-            own_break_even_cc = float(g.loc[p, "product_rate"] - g.loc[p, "funding_rate"])
             marginal_break_even_cc = float(g.loc[p, "product_rate"] - g.loc[p, "funding_rate"] - mortgage_spread)
-            rows.append({"scenario": scenario, "reverse_type": "product_break_even_credit_cost", "target_product": p, "threshold": own_break_even_cc, "threshold_unit": "annual_rate", "boundary_result_bn": boundary, "base_result_bn": base_result, "status": "FEASIBLE" if own_break_even_cc >= 0 else "NEGATIVE_BREAK_EVEN"})
             rows.append({"scenario": scenario, "reverse_type": "marginal_break_even_credit_cost_vs_mortgage", "target_product": p, "threshold": marginal_break_even_cc, "threshold_unit": "annual_rate", "boundary_result_bn": boundary, "base_result_bn": base_result, "status": "FEASIBLE" if marginal_break_even_cc >= 0 else "NEGATIVE_BREAK_EVEN"})
 
             derivative = total * h * (float(g.loc[p, "credit_risk_adjusted_spread"]) - mortgage_spread)
             base_share = weights[p]
             max_share = 1.0 - sum(weights[q] for q in RISKIER_PRODUCTS if q != p)
             if base_result <= boundary:
-                threshold, status2 = base_share, "ALREADY_AT_OR_BELOW_BOUNDARY"
+                threshold, status2 = math.nan, "ALREADY_AT_OR_BELOW_BOUNDARY"
             elif derivative >= 0:
                 threshold, status2 = math.nan, "NO_ADVERSE_CROSSING_WHEN_SHARE_INCREASES"
             else:
@@ -376,6 +438,58 @@ def reverse_stress(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFr
                     status2 = "FEASIBLE"
             rows.append({"scenario": scenario, "reverse_type": "critical_product_share_vs_mortgage", "target_product": p, "threshold": threshold, "threshold_unit": "share", "boundary_result_bn": boundary, "base_result_bn": base_result, "status": status2, "marginal_result_change_bn_per_1pp_share": derivative * 0.01})
     return pd.DataFrame(rows)
+
+
+def robustness_assessment(
+    product_results: pd.DataFrame,
+    summary: pd.DataFrame,
+    mortgage: pd.DataFrame,
+    cfg: ModelConfig,
+) -> pd.DataFrame:
+    base = summary.set_index("scenario").loc["Base"]
+    alt_row = mortgage.loc[mortgage["mortgage_pricing_rate"].idxmax()]
+    alt_rate = float(alt_row["mortgage_pricing_rate"])
+    alt_result = float(alt_row["risk_adjusted_financial_result_bn"])
+    scenario_map = summary.set_index("scenario")["risk_adjusted_financial_result_bn"].to_dict()
+    spread = product_results.pivot(index="scenario", columns="product", values="credit_risk_adjusted_spread")
+    share_direction_positive = bool((spread[RISKIER_PRODUCTS].sub(spread["Mortgage"], axis=0) > 0).all().all())
+    return pd.DataFrame([
+        {
+            "classification": "mechanically_stable",
+            "finding": f"Baseline total is RUB {base.exposure_bn:,.1f} bn and is recomputed from four exposures.",
+            "dependency": "Changes automatically with the current dataset; it is not a 7 tn or fixed 6,573 bn constraint.",
+        },
+        {
+            "classification": "mechanically_stable",
+            "finding": "CRAS and six-month RAFR follow the configured annual-rate and 0.5-year identities.",
+            "dependency": "Stable arithmetic conditional on the input exposures, pricing, funding and direct credit-cost components.",
+        },
+        {
+            "classification": "proxy_sensitive",
+            "finding": f"Base RAFR is RUB {base.risk_adjusted_financial_result_bn:,.1f} bn at the dataset mortgage proxy; it is RUB {alt_result:,.1f} bn at the {alt_rate:.1%} mortgage sensitivity endpoint.",
+            "dependency": "The sign and magnitude are not robust to the mortgage pricing proxy; the sensitivity endpoint is not a VTB yield estimate.",
+        },
+        {
+            "classification": "working_assumption_dependent",
+            "finding": f"Moderate RAFR is RUB {scenario_map['Moderate']:,.1f} bn and Severe RAFR is RUB {scenario_map['Severe']:,.1f} bn.",
+            "dependency": "Depends on provisional sigma multipliers and a primary credit-cost calibration sample of only three observations per product.",
+        },
+        {
+            "classification": "working_assumption_dependent",
+            "finding": f"Structural RAFR is RUB {scenario_map['Structural']:,.1f} bn and Combined RAFR is RUB {scenario_map['Combined']:,.1f} bn.",
+            "dependency": "Depends on explicit structural percentage-point shifts; only the fixed-total identity is mechanically stable.",
+        },
+        {
+            "classification": "conditional_direction",
+            "finding": "Replacing Mortgage with Consumer, Auto or Cards improves RAFR in every configured scenario." if share_direction_positive else "Product-share direction is not uniform across configured scenarios.",
+            "dependency": "This direction holds under current pricing/funding/credit-cost proxies and can change under alternative product-pricing assumptions.",
+        },
+        {
+            "classification": "boundary_sensitive",
+            "finding": f"Reverse-stress statuses are evaluated against RAFR_6M = RUB {cfg.critical_result_bn:,.1f} bn.",
+            "dependency": "Threshold existence and interpretation change if the critical boundary or input proxies change; infeasible thresholds are reported as NA.",
+        },
+    ])
 
 
 def mortgage_pricing_sensitivity(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
@@ -421,11 +535,14 @@ def make_figures(summary: pd.DataFrame, structural: pd.DataFrame, mortgage: pd.D
     fig.tight_layout(); fig.savefig(figdir / "mortgage_pricing_sensitivity.png", dpi=160); plt.close(fig)
 
 
-def build_report(df: pd.DataFrame, cfg: ModelConfig, qa: pd.DataFrame, adequacy: pd.DataFrame, sigmas: pd.DataFrame, product_results: pd.DataFrame, summary: pd.DataFrame, reverse: pd.DataFrame, factor: pd.DataFrame) -> str:
+def build_report(df: pd.DataFrame, cfg: ModelConfig, qa: pd.DataFrame, adequacy: pd.DataFrame, sigmas: pd.DataFrame, product_results: pd.DataFrame, summary: pd.DataFrame, reverse: pd.DataFrame, factor: pd.DataFrame, robustness: pd.DataFrame) -> str:
     base = baseline_table(df, cfg)
-    lines = ["# Model report — retail portfolio stress test", "", "## Scope", "",
+    lines = [f"# {cfg.research_title}", "", "## Research design", "",
+             f"Object: **{cfg.portfolio_nature}**.",
+             f"Primary question: **{cfg.primary_research_question}**.",
              f"Baseline: {cfg.baseline_date.date()}; horizon: {cfg.horizon_years:.1f} year (2026H2).",
              f"Four-product baseline exposure: **RUB {base.exposure.sum():,.1f} bn** (derived from the current dataset, not hard-coded).",
+             "Published VTB exposures anchor the baseline, while external pricing/funding proxies and scenario assumptions make the modeled portfolio synthetic.",
              "The model calculates an annualized credit-risk-adjusted spread and a six-month risk-adjusted financial result. It is not VTB actual profit, NIM, internal margin or RAROC.", "",
              "## Data adequacy", ""]
     for _, r in adequacy.iterrows():
@@ -450,6 +567,9 @@ def build_report(df: pd.DataFrame, cfg: ModelConfig, qa: pd.DataFrame, adequacy:
     lines.append("|---|---|---|---:|")
     for _, r in top.iterrows():
         lines.append(f"| {r['scenario']} | {r['product']} | {r['factor']} | {r['delta_result_bn']:,.2f} |")
+    lines += ["", "## Robustness and assumption dependence", ""]
+    for _, r in robustness.iterrows():
+        lines.append(f"- **{r['classification']}**: {r['finding']} {r['dependency']}")
     lines += ["", "## Interpretation constraints", "",
               "- Pricing/funding are external market proxies, not VTB product yield or internal FTP.",
               "- Base mortgage pricing keeps the dataset proxy; alternative market mortgage pricing is sensitivity only.",
@@ -478,6 +598,7 @@ def run_model(config_path: Path) -> Dict[str, Path]:
     factor = factor_sensitivity(product_results, cfg)
     reverse = reverse_stress(product_results, cfg)
     mortgage = mortgage_pricing_sensitivity(df, cfg)
+    robustness = robustness_assessment(product_results, summary, mortgage, cfg)
 
     files = {
         "qa": outdir / "qa_report.csv",
@@ -490,6 +611,7 @@ def run_model(config_path: Path) -> Dict[str, Path]:
         "factor": outdir / "factor_sensitivity.csv",
         "reverse": outdir / "reverse_stress.csv",
         "mortgage": outdir / "mortgage_pricing_sensitivity.csv",
+        "robustness": outdir / "results_robustness.csv",
         "report": outdir / "model_report.md",
     }
     qa.to_csv(files["qa"], index=False)
@@ -502,7 +624,8 @@ def run_model(config_path: Path) -> Dict[str, Path]:
     factor.to_csv(files["factor"], index=False)
     reverse.to_csv(files["reverse"], index=False)
     mortgage.to_csv(files["mortgage"], index=False)
-    files["report"].write_text(build_report(df, cfg, qa, adequacy, sigmas, product_results, summary, reverse, factor), encoding="utf-8")
+    robustness.to_csv(files["robustness"], index=False)
+    files["report"].write_text(build_report(df, cfg, qa, adequacy, sigmas, product_results, summary, reverse, factor, robustness), encoding="utf-8")
     make_figures(summary, structural, mortgage, outdir)
     return files
 

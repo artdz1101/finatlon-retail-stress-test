@@ -86,3 +86,35 @@ def test_reverse_share_returns_status_even_if_no_threshold():
     x = rev[rev.reverse_type == "critical_product_share_vs_mortgage"]
     assert set(x.target_product) == {"Consumer", "Auto", "Cards"}
     assert x.status.notna().all()
+    assert x.threshold.isna().all()
+
+
+def test_reverse_stress_infeasible_values_are_na_and_mortgage_break_even_is_included():
+    b = sm.baseline_table(sample_df(), cfg())
+    b["product_rate"] = 0.0
+    b["funding_rate"] = 0.10
+    b["credit_cost"] = 0.01
+    r = sm.calculate_product_results(b, 0.5, "Base")
+    rev = sm.reverse_stress(r, cfg())
+    mult = rev[rev.reverse_type == "portfolio_credit_cost_multiplier"].iloc[0]
+    assert mult.status == "NO_NONNEGATIVE_SOLUTION"
+    assert np.isnan(mult.threshold)
+    mortgage = rev[(rev.reverse_type == "product_break_even_credit_cost") & (rev.target_product == "Mortgage")].iloc[0]
+    assert mortgage.status == "NO_NONNEGATIVE_BREAK_EVEN"
+    assert np.isnan(mortgage.threshold)
+
+
+def test_scenario_summary_uses_methodological_order():
+    rows = []
+    b = sm.baseline_table(sample_df(), cfg())
+    for scenario in reversed(sm.SCENARIO_ORDER):
+        rows.append(sm.calculate_product_results(b, 0.5, scenario))
+    summary = sm.scenario_summary(pd.concat(rows, ignore_index=True), 0.5)
+    assert summary.scenario.tolist() == sm.SCENARIO_ORDER
+
+
+def test_research_framing_is_loaded_from_config():
+    loaded = sm.load_config(ROOT / "config" / "model_config.json")
+    assert "синтет" in loaded.portfolio_nature.lower() or "synthetic" in loaded.portfolio_nature.lower()
+    assert loaded.research_title
+    assert loaded.primary_research_question
