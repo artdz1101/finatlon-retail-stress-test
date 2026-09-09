@@ -1,0 +1,109 @@
+# Model report — retail portfolio stress test
+
+## Scope
+
+Baseline: 2026-06-30; horizon: 0.5 year (2026H2).
+Four-product baseline exposure: **RUB 6,573.0 bn** (derived from the current dataset, not hard-coded).
+The model calculates an annualized credit-risk-adjusted spread and a six-month risk-adjusted financial result. It is not VTB actual profit, NIM, internal margin or RAROC.
+
+## Data adequacy
+
+- **overall**: 6 reporting dates / 24 product rows — adequate for transparent scenario, sensitivity and reverse stress; inadequate for robust econometric estimation
+- **Mortgage**: n=6, primary_cc_n=3 — credit-cost calibration sample is short; scenario coefficients remain working assumptions
+- **Consumer**: n=6, primary_cc_n=3 — credit-cost calibration sample is short; scenario coefficients remain working assumptions
+- **Auto**: n=6, primary_cc_n=3 — credit-cost calibration sample is short; scenario coefficients remain working assumptions
+- **Cards**: n=6, primary_cc_n=3 — credit-cost calibration sample is short; scenario coefficients remain working assumptions
+- **known auxiliary history**: 30.06.2024 exposure reconstruction; 31.12.2024 CC depends on that prior exposure — excluded from primary CC sigma calibration unless later source verification upgrades the rows
+
+## Baseline
+
+| Product | Exposure | Weight | ECL rate | Credit cost | Pricing | Funding | CRAS | RAFR 6M |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Auto | 543.9 | 8.27% | 17.82% | 4.35% | 16.50% | 10.90% | 1.25% | 3.4 |
+| Cards | 223.4 | 3.40% | 21.04% | 5.59% | 31.20% | 13.00% | 12.61% | 14.1 |
+| Consumer | 1,525.9 | 23.21% | 16.17% | 4.25% | 17.50% | 10.90% | 2.35% | 17.9 |
+| Mortgage | 4,279.8 | 65.11% | 2.09% | 0.68% | 9.00% | 10.90% | -2.58% | -55.2 |
+
+## Scenario summary
+
+| Scenario | Credit loss, RUB bn | CRAS annualized | RAFR 6M, RUB bn |
+|---|---:|---:|---:|
+| Base | 65.1 | -0.60% | -19.8 |
+| Combined | 93.6 | -3.42% | -112.3 |
+| Moderate | 73.6 | -2.15% | -70.6 |
+| Severe | 82.1 | -3.70% | -121.5 |
+| Structural | 69.4 | -0.39% | -12.8 |
+
+## Calibration diagnostics
+
+Current sigma values are working scenario anchors, not statistically estimated forecast parameters.
+
+| product   |   credit_cost_sigma |   product_rate_sigma |   funding_rate_sigma |   credit_cost_n |   product_rate_n |   funding_rate_n |
+|:----------|--------------------:|---------------------:|---------------------:|----------------:|-----------------:|-----------------:|
+| Mortgage  |          0.00110636 |           0.00604332 |            0.0391889 |               3 |                6 |                6 |
+| Consumer  |          0.0110751  |           0.0232547  |            0.0391889 |               3 |                6 |                6 |
+| Auto      |          0.0198909  |           0.0210935  |            0.0391889 |               3 |                6 |                6 |
+| Cards     |          0.00770294 |           0.0413067  |            0.033332  |               3 |                6 |                6 |
+
+## Reverse stress highlights
+
+| Scenario | Type | Product | Threshold | Status |
+|---|---|---|---:|---|
+| Base | portfolio_credit_cost_multiplier | ALL | 0.6957 | THRESHOLD_BELOW_CURRENT_1X |
+| Base | critical_product_share_vs_mortgage | Consumer | 0.2321 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Base | critical_product_share_vs_mortgage | Auto | 0.0827 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Base | critical_product_share_vs_mortgage | Cards | 0.0340 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Combined | portfolio_credit_cost_multiplier | ALL | -0.2000 | NO_NONNEGATIVE_SOLUTION |
+| Combined | critical_product_share_vs_mortgage | Consumer | 0.2721 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Combined | critical_product_share_vs_mortgage | Auto | 0.1027 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Combined | critical_product_share_vs_mortgage | Cards | 0.0440 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Moderate | portfolio_credit_cost_multiplier | ALL | 0.0403 | THRESHOLD_BELOW_CURRENT_1X |
+| Moderate | critical_product_share_vs_mortgage | Consumer | 0.2321 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Moderate | critical_product_share_vs_mortgage | Auto | 0.0827 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Moderate | critical_product_share_vs_mortgage | Cards | 0.0340 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Severe | portfolio_credit_cost_multiplier | ALL | -0.4788 | NO_NONNEGATIVE_SOLUTION |
+| Severe | critical_product_share_vs_mortgage | Consumer | 0.2321 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Severe | critical_product_share_vs_mortgage | Auto | 0.0827 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Severe | critical_product_share_vs_mortgage | Cards | 0.0340 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Structural | portfolio_credit_cost_multiplier | ALL | 0.8156 | THRESHOLD_BELOW_CURRENT_1X |
+| Structural | critical_product_share_vs_mortgage | Consumer | 0.2521 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Structural | critical_product_share_vs_mortgage | Auto | 0.0927 | ALREADY_AT_OR_BELOW_BOUNDARY |
+| Structural | critical_product_share_vs_mortgage | Cards | 0.0390 | ALREADY_AT_OR_BELOW_BOUNDARY |
+
+## Largest local sensitivities
+
+| Scenario | Product | Factor | Delta RAFR, RUB bn |
+|---|---|---|---:|
+| Base | Mortgage | pricing_plus_100bp | 21.40 |
+| Base | Mortgage | funding_plus_100bp | -21.40 |
+| Base | Mortgage | credit_cost_plus_100bp | -21.40 |
+| Severe | Mortgage | funding_plus_100bp | -21.40 |
+| Moderate | Mortgage | pricing_plus_100bp | 21.40 |
+| Severe | Mortgage | credit_cost_plus_100bp | -21.40 |
+| Severe | Mortgage | pricing_plus_100bp | 21.40 |
+| Moderate | Mortgage | credit_cost_plus_100bp | -21.40 |
+| Moderate | Mortgage | funding_plus_100bp | -21.40 |
+| Structural | Mortgage | funding_plus_100bp | -20.25 |
+| Structural | Mortgage | pricing_plus_100bp | 20.25 |
+| Structural | Mortgage | credit_cost_plus_100bp | -20.25 |
+
+## Interpretation constraints
+
+- Pricing/funding are external market proxies, not VTB product yield or internal FTP.
+- Base mortgage pricing keeps the dataset proxy; alternative market mortgage pricing is sensitivity only.
+- Cards proxy does not model grace period, utilization, interchange or fees.
+- Opex, fees, taxes and capital charges are excluded.
+- Pochta Bank integration creates a perimeter break into 2026H1.
+- The short history supports transparent scenario calibration and sensitivity/reverse stress, not robust econometric inference.
+
+## QA
+
+- PASS: duplicate report_date/product — 0
+- PASS: baseline products present — missing=[]
+- PASS: positive exposure — bad_rows=0
+- PASS: ecl_rate formula — max_abs_diff=0.000e+00
+- PASS: annualized credit_cost formula — max_abs_diff=0.000e+00
+- PASS: baseline direct credit_cost components — missing_recomputed_rows=0
+- INFO: baseline four-product total — RUB_bn=6573.0
+- INFO: history reporting dates — n_dates=6, start=2023-12-31, end=2026-06-30
+- INFO: history design suitability — Suitable for scenario/sensitivity/reverse stress; not sufficient for robust regression/ML/tail inference

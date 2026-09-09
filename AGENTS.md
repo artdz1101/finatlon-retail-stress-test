@@ -1,0 +1,53 @@
+{
+  "input_file": "dataset_vtb_main_v2.xlsx",
+  "data_sheet": "DATA_MASTER",
+  "sources_sheet": "SOURCES",
+  "baseline_date": "2026-06-30",
+  "history_start_date": "2023-12-31",
+  "history_end_date": "2026-06-30",
+  "horizon_years": 0.5,
+  "products": ["Mortgage", "Consumer", "Auto", "Cards"],
+  "critical_result_bn": 0.0,
+  "scenario_calibration": {
+    "method": "historical_sigma_working_default",
+    "moderate": {
+      "credit_cost_sigma": 0.5,
+      "pricing_sigma": 0.25,
+      "funding_sigma": 0.25
+    },
+    "severe": {
+      "credit_cost_sigma": 1.0,
+      "pricing_sigma": 0.5,
+      "funding_sigma": 0.5
+    },
+    "note": "Working defaults only. The short 2023YE-2026H1 history is used as a calibration anchor, not as a statistically estimated stress model. Change through UPDATE_CONTEXT when scenario design is finalized."
+  },
+  "credit_cost_calibration_exclude_dates": [
+    "2024-06-30",
+    "2024-12-31"
+  ],
+  "structural_shift_pp": {
+    "moderate": {
+      "Consumer": 2.0,
+      "Auto": 1.0,
+      "Cards": 0.5
+    },
+    "severe": {
+      "Consumer": 4.0,
+      "Auto": 2.0,
+      "Cards": 1.0
+    },
+    "note": "Provisional deterministic shifts in percentage points. Mortgage is the residual donor and total four-product exposure stays fixed at the 2026H1 four-product sum."
+  },
+  "mortgage_pricing_sensitivity": {
+    "enabled": true,
+    "alternative_market_rate": 0.178,
+    "source": "https://www.cbr.ru/statistics/bank_sector/int_rat/0626/",
+    "note": "Sensitivity only. Base keeps the dataset mortgage proxy (9.0% at 2026H1) without subsidy adjustment."
+  },
+  "reverse_stress": {
+    "share_step": 0.001
+  },
+  "qa_tolerance": 1e-08,
+  "output_dir": "outputs"
+}

@@ -1,0 +1,7 @@
+item,value,assessment
+overall,6 reporting dates / 24 product rows,"adequate for transparent scenario, sensitivity and reverse stress; inadequate for robust econometric estimation"
+Mortgage,"n=6, primary_cc_n=3",credit-cost calibration sample is short; scenario coefficients remain working assumptions
+Consumer,"n=6, primary_cc_n=3",credit-cost calibration sample is short; scenario coefficients remain working assumptions
+Auto,"n=6, primary_cc_n=3",credit-cost calibration sample is short; scenario coefficients remain working assumptions
+Cards,"n=6, primary_cc_n=3",credit-cost calibration sample is short; scenario coefficients remain working assumptions
+known auxiliary history,30.06.2024 exposure reconstruction; 31.12.2024 CC depends on that prior exposure,excluded from primary CC sigma calibration unless later source verification upgrades the rows

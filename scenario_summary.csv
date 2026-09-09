@@ -1,0 +1,41 @@
+Работай в репозитории artdz1101/finatlon-retail-stress-test.
+
+Сначала прочитай в таком порядке:
+1) AGENTS.md
+2) DECISIONS_1_18.md
+3) MODEL_DECISIONS.md
+4) DATA_GAPS_AND_FALLBACKS.md
+5) DATA_ADEQUACY_2023_2026H1.md
+6) CONTEXT_CHANGELOG.md
+7) config/model_config.json
+
+Затем проверь dataset_vtb_main_v2.xlsx. dataset_vtb_mail_v1.xlsx — предыдущая версия и используется только при необходимости сравнения происхождения данных.
+
+Текущие решения пользователя уже зафиксированы и не надо задавать их заново: 1A 2B 3A 4A 5A; по пункту 6 сначала максимально проверяем наличие прямых product data 2026H1 и официальный источник, если не хватает — используем документированный fallback; 7A 8A 9A 10A 11C 12A+B 13A 14A 15A с периодом 2023–2026H1; 16B 17B; 18 = фиксированный total равен сумме четырех продуктовых exposure из 1A, а не 7 трлн.
+
+Важно:
+- Base = 30.06.2026, stress horizon = 2026H2 (0.5 года).
+- Текущий Excel фактически начинается с 31.12.2023. Не придумывай 2023H1, если его нет в источнике.
+- Для 2026H1 product credit cost сначала используй прямую формулу через 31.12.2025 exposure, 30.06.2026 exposure и H1 2026 ECL remeasurement. Group CoR scaling — только fallback, если direct product data окажутся недоступными/несопоставимыми.
+- Structural total всегда вычисляй динамически как сумму четырех baseline exposure. Не хардкодь 7 трлн и не делай 6,573 трлн неизменяемым константным ограничением.
+- Base pricing использует значения текущего dataset. 17.8% market mortgage — только sensitivity, не замена Base и не фактический VTB yield.
+- Не добавляй Opex/RWA/RAROC без UPDATE_CONTEXT.
+- Истории достаточно для scenario/sensitivity/reverse stress, но недостаточно для убедительной регрессии/ML. Не маскируй рабочие стресс-коэффициенты под статистически оцененные параметры.
+
+Сначала выполни source/data QA:
+A. Попробуй открыть официальный VTB IFRS 6M2026 PDF из SOURCES и найди точные страницы/notes для product exposure, ECL reserve и ECL remeasurement. Запиши результат в SOURCE_QA_2026H1.md.
+B. Если PDF недоступен из среды, не выдумывай страницы. Зафиксируй, что официальный архив подтверждает наличие отчета, а page-level mapping остается pending, и продолжи рабочий расчет по текущему dataset.
+C. Проверь формулы ecl_rate и annualized credit_cost.
+D. Сформируй data adequacy diagnostics по текущему окну 31.12.2023–30.06.2026.
+
+После QA:
+1. Запусти pytest.
+2. Запусти полную модель.
+3. Проверь Base / Moderate / Severe / Structural / Combined.
+4. Проверь annualized credit-risk-adjusted spread и six-month risk-adjusted financial result.
+5. Построй sensitivity по pricing/funding/credit cost и долям Consumer/Auto/Cards.
+6. Выполни reverse stress; если порога нет, возвращай NA и статус, а не искусственный порог.
+7. Сохрани outputs/ и model_report.md.
+8. Отдельно укажи, какие результаты устойчивы, а какие зависят от текущих рабочих Moderate/Severe/structural assumptions.
+
+Если я пишу `UPDATE_CONTEXT: ...`, обнови контекст/config/code/tests/changelog и продолжай уже с новой версией.

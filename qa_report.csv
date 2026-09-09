@@ -1,0 +1,17 @@
+# Context changelog
+
+## 2026-09-09 — methodology questionnaire integrated
+- Integrated user selections: `1A 2B 3A 4A 5A 6(direct-data-first) 7A 8A 9A 10A 11C 12(A+B) 13A 14A 15A(2023–2026H1) 16B 17B 18(A1 sum)`.
+- Baseline total is now explicitly dynamic: sum of the four 2026H1 product exposures, not 7 tn.
+- Base credit cost is direct product calculation from average exposure and H1 ECL remeasurement; Group CoR scaling moved to fallback only.
+- Base horizon fixed to 2026H2 / 0.5 year while rates and credit cost remain annualized.
+- Added separate annualized credit-risk-adjusted spread and six-month risk-adjusted financial result outputs.
+- Reconciled 2B + 16B: interpolated history can remain auxiliary, but primary calculation/calibration uses strict reproducible identities where possible.
+- Current dataset window corrected to six dates from 31.12.2023 to 30.06.2026; no invented 2023H1.
+- Added explicit data adequacy and data-gap/fallback documents.
+- Mortgage 17.8% kept as sensitivity only; Base remains dataset proxy.
+- Mandatory variable classification taxonomy remains removed.
+
+## 2026-09-09 — flexible-context revision
+- Added `UPDATE_CONTEXT: <instruction>` workflow.
+- Reframed scenario settings as revisable working defaults.

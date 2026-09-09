@@ -1,0 +1,88 @@
+from pathlib import Path
+import sys
+import numpy as np
+import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+import stress_model as sm  # noqa: E402
+
+
+def sample_df():
+    rows = [
+        ["2025-12-31", "Mortgage", 4364.8, 73.5, 15.8, 73.5/4364.8, 2*15.8/((4052.6+4364.8)/2), 0.076, 0.122],
+        ["2025-12-31", "Consumer", 1644.8, 255.6, 19.6, 255.6/1644.8, 2*19.6/((1889.2+1644.8)/2), 0.144, 0.122],
+        ["2025-12-31", "Auto", 560.7, 91.0, 17.6, 91.0/560.7, 2*17.6/((614.1+560.7)/2), 0.169, 0.122],
+        ["2025-12-31", "Cards", 248.9, 46.1, 7.0, 46.1/248.9, 2*7.0/((276.8+248.9)/2), 0.271, 0.153],
+        ["2026-06-30", "Mortgage", 4279.8, 89.4, 14.7, 89.4/4279.8, 2*14.7/((4364.8+4279.8)/2), 0.090, 0.109],
+        ["2026-06-30", "Consumer", 1525.9, 246.7, 33.7, 246.7/1525.9, 2*33.7/((1644.8+1525.9)/2), 0.175, 0.109],
+        ["2026-06-30", "Auto", 543.9, 96.9, 12.0, 96.9/543.9, 2*12.0/((560.7+543.9)/2), 0.165, 0.109],
+        ["2026-06-30", "Cards", 223.4, 47.0, 6.6, 47.0/223.4, 2*6.6/((248.9+223.4)/2), 0.312, 0.130],
+    ]
+    return pd.DataFrame(rows, columns=sm.REQUIRED).assign(report_date=lambda x: pd.to_datetime(x.report_date))
+
+
+def cfg():
+    return sm.ModelConfig(
+        input_file="x",
+        data_sheet="DATA_MASTER",
+        baseline_date=pd.Timestamp("2026-06-30"),
+        history_start_date=pd.Timestamp("2025-12-31"),
+        history_end_date=pd.Timestamp("2026-06-30"),
+        horizon_years=0.5,
+        products=sm.PRODUCTS,
+        critical_result_bn=0.0,
+        scenario_calibration={"moderate": {"credit_cost_sigma": 0.5, "pricing_sigma": 0.25, "funding_sigma": 0.25}, "severe": {"credit_cost_sigma": 1.0, "pricing_sigma": 0.5, "funding_sigma": 0.5}},
+        credit_cost_calibration_exclude_dates=[],
+        structural_shift_pp={"moderate": {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5}, "severe": {"Consumer": 4.0, "Auto": 2.0, "Cards": 1.0}},
+        mortgage_pricing_sensitivity={"enabled": True, "alternative_market_rate": 0.178},
+        reverse_stress={"share_step": 0.001},
+        qa_tolerance=1e-8,
+        output_dir="outputs",
+    )
+
+
+def test_baseline_total_is_dynamic_sum_not_7tn():
+    b = sm.baseline_table(sample_df(), cfg())
+    assert np.isclose(b.exposure.sum(), 6573.0)
+    assert np.isclose(b.weight.sum(), 1.0)
+
+
+def test_baseline_credit_cost_recomputed_directly():
+    b = sm.baseline_table(sample_df(), cfg()).set_index("product")
+    expected = 2 * 33.7 / ((1644.8 + 1525.9) / 2)
+    assert np.isclose(b.loc["Consumer", "credit_cost"], expected)
+
+
+def test_half_year_result_and_annualized_spread():
+    b = sm.baseline_table(sample_df(), cfg())
+    r = sm.calculate_product_results(b, 0.5, "Base")
+    c = r[r["product"] == "Consumer"].iloc[0]
+    spread = c.product_rate - c.funding_rate - c.credit_cost
+    assert np.isclose(c.credit_risk_adjusted_spread, spread)
+    assert np.isclose(c.risk_adjusted_financial_result_bn, c.exposure * spread * 0.5)
+
+
+def test_structural_shift_keeps_a1_total_fixed():
+    b = sm.baseline_table(sample_df(), cfg())
+    s = sm.apply_structural_shift(b, {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5})
+    assert np.isclose(s.exposure.sum(), b.exposure.sum())
+    assert np.isclose(s.weight.sum(), 1.0)
+    assert s.loc[s["product"] == "Mortgage", "weight"].iloc[0] < b.loc[b["product"] == "Mortgage", "weight"].iloc[0]
+
+
+def test_mortgage_market_rate_is_sensitivity_not_base_override():
+    b = sm.baseline_table(sample_df(), cfg())
+    assert np.isclose(b.loc[b["product"] == "Mortgage", "product_rate"].iloc[0], 0.09)
+    ms = sm.mortgage_pricing_sensitivity(sample_df(), cfg())
+    assert np.isclose(ms.mortgage_pricing_rate.min(), 0.09)
+    assert np.isclose(ms.mortgage_pricing_rate.max(), 0.178)
+
+
+def test_reverse_share_returns_status_even_if_no_threshold():
+    b = sm.baseline_table(sample_df(), cfg())
+    r = sm.calculate_product_results(b, 0.5, "Base")
+    rev = sm.reverse_stress(r, cfg())
+    x = rev[rev.reverse_type == "critical_product_share_vs_mortgage"]
+    assert set(x.target_product) == {"Consumer", "Auto", "Cards"}
+    assert x.status.notna().all()

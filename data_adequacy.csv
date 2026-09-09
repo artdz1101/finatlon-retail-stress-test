@@ -1,0 +1,10 @@
+check,status,detail
+duplicate report_date/product,PASS,0
+baseline products present,PASS,missing=[]
+positive exposure,PASS,bad_rows=0
+ecl_rate formula,PASS,max_abs_diff=0.000e+00
+annualized credit_cost formula,PASS,max_abs_diff=0.000e+00
+baseline direct credit_cost components,PASS,missing_recomputed_rows=0
+baseline four-product total,INFO,RUB_bn=6573.0
+history reporting dates,INFO,"n_dates=6, start=2023-12-31, end=2026-06-30"
+history design suitability,INFO,Suitable for scenario/sensitivity/reverse stress; not sufficient for robust regression/ML/tail inference
