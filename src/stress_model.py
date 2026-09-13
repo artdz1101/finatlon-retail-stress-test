@@ -21,7 +21,125 @@ import pandas as pd
 
 PRODUCTS = ["Mortgage", "Consumer", "Auto", "Cards"]
 RISKIER_PRODUCTS = ["Consumer", "Auto", "Cards"]
-SCENARIO_ORDER = ["Base", "Moderate", "Severe", "Structural", "Combined"]
+SCENARIO_ORDER = ["Base", "Moderate", "Severe", "PortfolioMix", "SevereMix"]
+SCENARIO_ALIASES = {"Structural": "PortfolioMix", "Combined": "SevereMix"}
+SCENARIO_LABELS = {"Base": "Базовый", "Moderate": "Умеренный", "Severe": "Тяжёлый", "PortfolioMix": "Изменение состава", "SevereMix": "Тяжёлый + изменение состава"}
+SCENARIO_TYPES = {"Base": "baseline", "Moderate": "financial_stress", "Severe": "financial_stress", "PortfolioMix": "portfolio_mix", "SevereMix": "combined"}
+PRODUCT_LABELS = {"Mortgage": "Ипотека", "Consumer": "Потребительские кредиты", "Auto": "Автокредиты", "Cards": "Кредитные карты", "ALL": "Весь портфель"}
+STATUS_LABELS = {
+    "FEASIBLE": "Допустимое решение",
+    "ALREADY_AT_OR_BELOW_BOUNDARY": "Исходный результат уже на критической границе или ниже",
+    "THRESHOLD_BELOW_CURRENT_1X": "Граница требует снижения текущей стоимости кредитного риска",
+    "NO_NONNEGATIVE_SOLUTION": "Неотрицательное решение отсутствует",
+    "NO_CREDIT_LOSS_BASE": "В исходном варианте нет кредитных потерь",
+    "NO_NONNEGATIVE_BREAK_EVEN": "Неотрицательная стоимость риска для безубыточности отсутствует",
+    "NEGATIVE_BREAK_EVEN": "Расчётная стоимость риска для безубыточности отрицательна",
+    "NO_ADVERSE_CROSSING_WHEN_SHARE_INCREASES": "Увеличение доли не пересекает границу в сторону ухудшения",
+    "NO_FEASIBLE_CROSSING": "Пересечение отсутствует в допустимом диапазоне долей",
+    "PASS": "Пройдено", "FAIL": "Ошибка", "INFO": "Справочно",
+}
+REVERSE_LABELS = {
+    "portfolio_credit_cost_multiplier": "Множитель стоимости кредитного риска портфеля",
+    "critical_product_share_vs_mortgage": "Критическая доля при замещении ипотеки",
+}
+FACTOR_LABELS = {
+    "pricing_plus_100bp": "Ставка по кредиту +1 п.п.",
+    "funding_plus_100bp": "Стоимость фондирования +1 п.п.",
+    "credit_cost_plus_100bp": "Стоимость кредитного риска +1 п.п.",
+    "share_plus_1pp_vs_mortgage": "Доля продукта +1 п.п. за счёт ипотеки",
+}
+TERMINOLOGY_NOTE = """| Термин | Расшифровка и смысл |
+|---|---|
+| CRAS | Credit-risk-adjusted spread — спред с учётом кредитного риска: ставка по кредиту минус фондирование и стоимость кредитного риска, в годовом выражении. |
+| RAFR | Risk-adjusted financial result — финансовый результат с учётом кредитного риска; в модели рассчитывается за шесть месяцев. |
+| ECL | Expected credit losses — ожидаемые кредитные убытки; резерв отражает запас на дату, переоценка — компонент расчёта стоимости риска за период. |
+| CoR | Cost of risk — стоимость риска; официальный показатель группы отличается по охвату и определению от продуктового исследовательского показателя. |
+| NIM | Net interest margin — чистая процентная маржа. |
+| FTP | Funds transfer pricing — внутреннее трансфертное ценообразование на фондирование. |
+| RAROC | Risk-adjusted return on capital — доходность капитала с учётом риска. |
+| RWA | Risk-weighted assets — активы, взвешенные по риску. |
+| Opex | Operating expenses — операционные расходы. |
+| LGD | Loss given default — доля потерь при дефолте. |
+| NA | Not available — порог не представлен; причину указывает статус расчёта. |
+| H1 / H2 / 6M | First half / second half / six months — первое полугодие / второе полугодие / шесть месяцев. |
+| Exposure | Кредитная экспозиция: объём требований по продукту, используемый в модели. |
+| Pricing / funding | Ставка по кредиту / стоимость фондирования. |
+| Market proxy | Рыночный показатель-заменитель: внешняя ставка вместо ненаблюдаемой внутренней ставки банка. |
+| Baseline / Base Mix | Базовый вариант / исходный продуктовый состав. |
+| Base / Moderate / Severe | Базовый / умеренный / тяжёлый финансовый сценарий. |
+| Portfolio-mix sensitivity (PortfolioMix) | Чувствительность к продуктовому составу при неизменной общей экспозиции. |
+| Severe + Portfolio Mix (SevereMix) | Тяжёлые финансовые предпосылки в сочетании с изменением продуктового состава. |
+| Reverse stress / adverse crossing | Обратное стресс-тестирование / пересечение критической границы в сторону ухудшения результата. |
+| Break-even | Безубыточность: значение параметра, при котором соответствующий результат равен нулю. |
+| QA / ML | Quality assurance / machine learning — проверка качества / машинное обучение. |
+| п.п. / bp | Процентный пункт / basis point (базисный пункт); 100 базисных пунктов равны одному процентному пункту. |"""
+
+
+def scenario_label(scenario: str) -> str:
+    name = SCENARIO_ALIASES.get(scenario, scenario)
+    return SCENARIO_LABELS.get(name, name)
+
+
+def russian_text(text: str) -> str:
+    """Translate presentation text while preserving machine-readable outputs."""
+    translations = {
+        "Synthetic four-product retail credit portfolio calibrated on public VTB and Bank of Russia data": "Синтетический четырёхпродуктовый розничный кредитный портфель, откалиброванный на публичных данных ВТБ и Банка России",
+        "Synthetic four-product retail credit portfolio calibrated on public data": "Синтетический четырёхпродуктовый розничный кредитный портфель, откалиброванный на публичных данных",
+        "At what share of higher-risk products does additional modeled income cease to compensate for higher credit losses and reduced stress resilience?": "При какой доле более рискованных продуктов дополнительный модельный доход перестаёт компенсировать кредитные потери и снижение устойчивости к стрессу?",
+        "When does additional modeled income cease to compensate for higher credit losses?": "Когда дополнительный модельный доход перестаёт компенсировать рост кредитных потерь?",
+        "adequate for transparent scenario, sensitivity and reverse stress; inadequate for robust econometric estimation": "достаточно для прозрачного сценарного анализа, анализа чувствительности и обратного стресс-тестирования; недостаточно для устойчивого эконометрического оценивания",
+        "credit-cost calibration sample is short; scenario coefficients remain working assumptions": "выборка для калибровки стоимости риска короткая; сценарные коэффициенты остаются рабочими предпосылками",
+        "excluded from primary CC sigma calibration unless later source verification upgrades the rows": "исключены из основной калибровки стандартного отклонения стоимости риска до возможной проверки первоисточника",
+        "30.06.2024 exposure reconstruction; 31.12.2024 CC depends on that prior exposure": "реконструкция экспозиции на 30.06.2024; стоимость риска на 31.12.2024 зависит от этой предыдущей экспозиции",
+        "Pochta Bank integration affects changes into the baseline date": "интеграция Почта Банка влияет на изменения к базовой дате",
+        "30.06.2026 remains a usable snapshot; changes into it are not interpreted as purely organic dynamics": "срез на 30.06.2026 пригоден для базового портфеля; изменения к этой дате не трактуются как исключительно органическая динамика",
+        "Suitable for scenario/sensitivity/reverse stress; not sufficient for robust regression/ML/tail inference": "подходит для сценарного анализа, чувствительности и обратного стресс-тестирования; недостаточно для устойчивой регрессии, машинного обучения или оценки хвостов распределения",
+        "Changes automatically with the current dataset; it is not a 7 tn or fixed 6,573 bn constraint.": "Сумма меняется вместе с текущими данными; ограничение в 7 трлн или фиксированные 6,573 млрд руб. не задаётся.",
+        "CRAS and six-month RAFR follow the configured annual-rate and 0.5-year identities.": "CRAS и шестимесячный RAFR соответствуют формулам с годовыми ставками и горизонтом 0.5 года.",
+        "Stable arithmetic conditional on the input exposures, pricing, funding and direct credit-cost components.": "Арифметика устойчива при заданных экспозициях, кредитных ставках, фондировании и прямых компонентах стоимости риска.",
+        "The sign and magnitude are not robust to the mortgage pricing proxy; the sensitivity endpoint is not a VTB yield estimate.": "Знак и величина результата чувствительны к ипотечной ставке-заменителю; крайняя точка анализа чувствительности не является оценкой доходности ВТБ.",
+        "Depends on provisional sigma multipliers and a primary credit-cost calibration sample of only three observations per product.": "Зависит от рабочих множителей стандартного отклонения и основной выборки стоимости риска из трёх наблюдений на продукт.",
+        "Depends on explicit portfolio-mix percentage-point shifts; only the fixed-total identity is mechanically stable.": "Зависит от заданных сдвигов продуктовых долей в процентных пунктах; механически устойчиво только сохранение общей экспозиции.",
+        "Replacing Mortgage with Consumer, Auto or Cards improves RAFR in every configured scenario.": "Замещение ипотеки потребительскими кредитами, автокредитами или кредитными картами улучшает RAFR во всех настроенных сценариях.",
+        "Product-share direction is not uniform across configured scenarios.": "Направление эффекта изменения доли различается между настроенными сценариями.",
+        "This direction holds under current pricing/funding/credit-cost proxies and can change under alternative product-pricing assumptions.": "Такое направление сохраняется при текущих кредитных ставках, фондировании и стоимости риска; альтернативные предпосылки о ставках могут его изменить.",
+        "Threshold existence and interpretation change if the critical boundary or input proxies change; infeasible thresholds are reported as NA.": "Наличие и интерпретация порога зависят от критической границы и исходных показателей-заменителей; недопустимые пороги представлены как NA.",
+        "Baseline total is RUB ": "Базовая сумма равна ",
+        " bn and is recomputed from four exposures.": " млрд руб. и рассчитана из четырёх экспозиций.",
+        "Base RAFR is RUB ": "Базовый RAFR равен ",
+        " bn at the dataset mortgage proxy; it is RUB ": " млрд руб. при ипотечной ставке из набора данных; результат равен ",
+        " bn at the ": " млрд руб. при ипотечной ставке ",
+        " mortgage sensitivity endpoint.": " на крайней точке анализа чувствительности.",
+        "Moderate RAFR is RUB ": "RAFR в умеренном сценарии равен ",
+        " bn and Severe RAFR is RUB ": " млрд руб., а в тяжёлом — ",
+        "Portfolio-mix sensitivity RAFR is RUB ": "RAFR при изменении состава равен ",
+        " bn and Severe + Portfolio Mix RAFR is RUB ": " млрд руб., а при сочетании тяжёлого сценария и изменения состава — ",
+        "Reverse-stress statuses are evaluated against RAFR_6M = RUB ": "Статусы обратного стресс-тестирования оцениваются относительно RAFR_6M = ",
+        "mechanically_stable": "Механически устойчиво", "proxy_sensitive": "Чувствительно к показателю-заменителю",
+        "working_assumption_dependent": "Зависит от рабочих предпосылок", "conditional_direction": "Условное направление эффекта", "boundary_sensitive": "Зависит от критической границы",
+        "duplicate report_date/product": "Дубликаты пары отчётная дата / продукт",
+        "complete numeric inputs": "Полнота числовых входов", "finite numeric inputs": "Конечность числовых входов",
+        "baseline products present": "Наличие всех базовых продуктов", "positive exposure": "Положительная экспозиция",
+        "ecl_rate formula": "Формула доли резерва ECL", "annualized credit_cost formula": "Формула годовой стоимости кредитного риска",
+        "baseline direct credit_cost components": "Наличие прямых компонентов базовой стоимости риска",
+        "baseline four-product total": "Базовая сумма четырёх продуктов",
+        "complete four-product history panel": "Полнота истории четырёх продуктов", "configured history bounds present": "Наличие настроенных границ истории",
+        "history reporting dates": "Отчётные даты истории", "history design suitability": "Пригодность истории для выбранного анализа",
+        "overall": "Общая оценка", "numeric completeness": "Полнота числовых данных", "known auxiliary history": "Вспомогательная история",
+        "2026H1 structural break": "Изменение периметра в первом полугодии 2026 года",
+        "complete for the configured window": "данные полны в настроенном периоде", "missing inputs require reconciliation": "пропущенные значения требуют сверки",
+        " reporting dates / ": " отчётных дат / ", " product rows": " продуктовых строк",
+        "primary_cc_n=": "основных наблюдений стоимости риска=", "primary_cc_range=": "диапазон основной стоимости риска=",
+        "pricing_range=": "диапазон кредитных ставок=", "funding_range=": "диапазон фондирования=",
+        "missing_recomputed_rows=": "строк без прямого расчёта=", "missing_cells=": "пропущенных ячеек=",
+        "max_abs_diff=": "максимальное абсолютное расхождение=", "all_finite=": "все значения конечны=", "bad_rows=": "некорректных строк=",
+        "n_dates=": "число дат=", "RUB_bn=": "млрд руб.=", "missing=": "отсутствуют=", "rows=": "строк=", "dates=": "дат=", "start=": "начало=", "end=": "конец=", "n=": "наблюдений=",
+        "no comparable rows": "нет сопоставимых строк", "True": "да", "False": "нет",
+        **PRODUCT_LABELS, " bn": " млрд руб.",
+    }
+    for original, translation in sorted(translations.items(), key=lambda pair: len(pair[0]), reverse=True):
+        text = text.replace(original, translation)
+    return text.replace("млрд руб..", "млрд руб.").replace("фиксированные 6,573", "фиксированные 6 573")
 
 ALIASES = {
     "Отчетная дата": "report_date", "Report date": "report_date", "report_date": "report_date",
@@ -49,7 +167,7 @@ class ModelConfig:
     critical_result_bn: float
     scenario_calibration: Mapping[str, object]
     credit_cost_calibration_exclude_dates: List[pd.Timestamp]
-    structural_shift_pp: Mapping[str, object]
+    structural_shift_pp: Mapping[str, object]  # Legacy constructor name, retained for compatibility.
     mortgage_pricing_sensitivity: Mapping[str, object]
     reverse_stress: Mapping[str, float]
     qa_tolerance: float
@@ -58,9 +176,19 @@ class ModelConfig:
     portfolio_nature: str = "Synthetic four-product retail credit portfolio calibrated on public data"
     primary_research_question: str = "When does additional modeled income cease to compensate for higher credit losses?"
 
+    @property
+    def portfolio_mix_shift_pp(self) -> Mapping[str, object]:
+        return self.structural_shift_pp
+
 
 def load_config(path: Path) -> ModelConfig:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if "portfolio_mix_shift_pp" in raw:
+        mix_shift = raw["portfolio_mix_shift_pp"]
+        if "structural_shift_pp" in raw and raw["structural_shift_pp"] != mix_shift:
+            raise ValueError("Conflicting portfolio-mix shift settings")
+    else:
+        mix_shift = raw["structural_shift_pp"]  # Legacy JSON alias.
     return ModelConfig(
         input_file=raw["input_file"],
         data_sheet=raw.get("data_sheet", "DATA_MASTER"),
@@ -72,7 +200,7 @@ def load_config(path: Path) -> ModelConfig:
         critical_result_bn=float(raw.get("critical_result_bn", 0.0)),
         scenario_calibration=raw["scenario_calibration"],
         credit_cost_calibration_exclude_dates=[pd.Timestamp(x) for x in raw.get("credit_cost_calibration_exclude_dates", [])],
-        structural_shift_pp=raw["structural_shift_pp"],
+        structural_shift_pp=mix_shift,
         mortgage_pricing_sensitivity=raw.get("mortgage_pricing_sensitivity", {}),
         reverse_stress=raw.get("reverse_stress", {}),
         qa_tolerance=float(raw.get("qa_tolerance", 1e-8)),
@@ -262,7 +390,7 @@ def apply_financial_stress(base: pd.DataFrame, sigmas: pd.DataFrame, calibration
     return out.drop(columns=["credit_cost_sigma", "product_rate_sigma", "funding_rate_sigma"])
 
 
-def apply_structural_shift(base: pd.DataFrame, shift_pp: Mapping[str, float]) -> pd.DataFrame:
+def apply_portfolio_mix_shift(base: pd.DataFrame, shift_pp: Mapping[str, float]) -> pd.DataFrame:
     out = base.copy()
     total = float(out.exposure.sum())
     weights = out.set_index("product")["weight"].to_dict()
@@ -274,12 +402,16 @@ def apply_structural_shift(base: pd.DataFrame, shift_pp: Mapping[str, float]) ->
     weights["Mortgage"] -= increase
     raw = np.array([weights[p] for p in cfg_products(out)], dtype=float)
     if np.any(raw < -1e-12) or np.any(raw > 1 + 1e-12):
-        raise ValueError("Structural shift creates infeasible weights")
+        raise ValueError("Portfolio-mix shift creates infeasible weights")
     out["weight"] = out["product"].map(weights)
     out["exposure"] = out.weight * total
     if not np.isclose(out.exposure.sum(), total):
-        raise ValueError("Structural stress changed total exposure")
+        raise ValueError("Portfolio-mix shift changed total exposure")
     return out
+
+
+# Legacy callable alias; active calculations use the portfolio-mix name.
+apply_structural_shift = apply_portfolio_mix_shift
 
 
 def cfg_products(df: pd.DataFrame) -> List[str]:
@@ -294,7 +426,9 @@ def calculate_product_results(params: pd.DataFrame, horizon_years: float, scenar
     out["funding_cost_bn"] = out.exposure * out.funding_rate * horizon_years
     out["credit_loss_bn"] = out.exposure * out.credit_cost * horizon_years
     out["risk_adjusted_financial_result_bn"] = out.exposure * out.credit_risk_adjusted_spread * horizon_years
+    scenario = SCENARIO_ALIASES.get(scenario, scenario)
     out["scenario"] = scenario
+    out["scenario_type"] = SCENARIO_TYPES.get(scenario, "baseline")
     return out
 
 
@@ -309,15 +443,16 @@ def build_scenarios(df: pd.DataFrame, cfg: ModelConfig) -> Tuple[pd.DataFrame, p
     severe = apply_financial_stress(base, sig, cfg.scenario_calibration["severe"])
     results.append(calculate_product_results(severe, cfg.horizon_years, "Severe"))
 
-    structural = apply_structural_shift(base, cfg.structural_shift_pp["moderate"])
-    results.append(calculate_product_results(structural, cfg.horizon_years, "Structural"))
+    portfolio_mix = apply_portfolio_mix_shift(base, cfg.portfolio_mix_shift_pp["moderate"])
+    results.append(calculate_product_results(portfolio_mix, cfg.horizon_years, "PortfolioMix"))
 
-    combined = apply_structural_shift(severe, cfg.structural_shift_pp["severe"])
-    results.append(calculate_product_results(combined, cfg.horizon_years, "Combined"))
+    severe_mix = apply_portfolio_mix_shift(severe, cfg.portfolio_mix_shift_pp["severe"])
+    results.append(calculate_product_results(severe_mix, cfg.horizon_years, "SevereMix"))
     return pd.concat(results, ignore_index=True), sig
 
 
 def scenario_summary(product_results: pd.DataFrame, horizon_years: float) -> pd.DataFrame:
+    product_results = product_results.assign(scenario=product_results.scenario.replace(SCENARIO_ALIASES))
     g = product_results.groupby("scenario", as_index=False).agg(
         exposure_bn=("exposure", "sum"),
         pricing_income_bn=("pricing_income_bn", "sum"),
@@ -329,10 +464,12 @@ def scenario_summary(product_results: pd.DataFrame, horizon_years: float) -> pd.
     g["scenario"] = pd.Categorical(g["scenario"], categories=SCENARIO_ORDER, ordered=True)
     g = g.sort_values("scenario").reset_index(drop=True)
     g["scenario"] = g["scenario"].astype(str)
+    g["scenario_type"] = g["scenario"].map(SCENARIO_TYPES)
     return g
 
 
-def structural_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
+def portfolio_mix_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
+    product_results = product_results.assign(scenario=product_results.scenario.replace(SCENARIO_ALIASES))
     rows = []
     step = float(cfg.reverse_stress.get("share_step", 0.001))
     for scenario in SCENARIO_ORDER:
@@ -359,7 +496,11 @@ def structural_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> p
     return pd.DataFrame(rows)
 
 
+structural_sensitivity = portfolio_mix_sensitivity  # Legacy callable alias.
+
+
 def factor_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
+    product_results = product_results.assign(scenario=product_results.scenario.replace(SCENARIO_ALIASES))
     rows = []
     h = cfg.horizon_years
     for scenario in SCENARIO_ORDER:
@@ -383,6 +524,7 @@ def factor_sensitivity(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.Da
 
 
 def reverse_stress(product_results: pd.DataFrame, cfg: ModelConfig) -> pd.DataFrame:
+    product_results = product_results.assign(scenario=product_results.scenario.replace(SCENARIO_ALIASES))
     rows = []
     boundary = cfg.critical_result_bn
     h = cfg.horizon_years
@@ -446,6 +588,8 @@ def robustness_assessment(
     mortgage: pd.DataFrame,
     cfg: ModelConfig,
 ) -> pd.DataFrame:
+    product_results = product_results.assign(scenario=product_results.scenario.replace(SCENARIO_ALIASES))
+    summary = summary.assign(scenario=summary.scenario.replace(SCENARIO_ALIASES))
     base = summary.set_index("scenario").loc["Base"]
     alt_row = mortgage.loc[mortgage["mortgage_pricing_rate"].idxmax()]
     alt_rate = float(alt_row["mortgage_pricing_rate"])
@@ -476,8 +620,8 @@ def robustness_assessment(
         },
         {
             "classification": "working_assumption_dependent",
-            "finding": f"Structural RAFR is RUB {scenario_map['Structural']:,.1f} bn and Combined RAFR is RUB {scenario_map['Combined']:,.1f} bn.",
-            "dependency": "Depends on explicit structural percentage-point shifts; only the fixed-total identity is mechanically stable.",
+            "finding": f"Portfolio-mix sensitivity RAFR is RUB {scenario_map['PortfolioMix']:,.1f} bn and Severe + Portfolio Mix RAFR is RUB {scenario_map['SevereMix']:,.1f} bn.",
+            "dependency": "Depends on explicit portfolio-mix percentage-point shifts; only the fixed-total identity is mechanically stable.",
         },
         {
             "classification": "conditional_direction",
@@ -510,75 +654,107 @@ def mortgage_pricing_sensitivity(df: pd.DataFrame, cfg: ModelConfig) -> pd.DataF
     return pd.DataFrame(rows)
 
 
-def make_figures(summary: pd.DataFrame, structural: pd.DataFrame, mortgage: pd.DataFrame, outdir: Path) -> None:
+def make_figures(summary: pd.DataFrame, portfolio_mix: pd.DataFrame, mortgage: pd.DataFrame, outdir: Path) -> None:
     figdir = outdir / "figures"
     figdir.mkdir(parents=True, exist_ok=True)
-    order = ["Base", "Moderate", "Severe", "Structural", "Combined"]
+    order = SCENARIO_ORDER
     s = summary.set_index("scenario").reindex(order).dropna()
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.bar(s.index, s.risk_adjusted_financial_result_bn)
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    ax.bar([scenario_label(name) for name in s.index], s.risk_adjusted_financial_result_bn)
+    ax.tick_params(axis="x", labelrotation=15)
     ax.axhline(0, linewidth=1)
-    ax.set_ylabel("RUB bn, 6M")
-    ax.set_title("Risk-adjusted financial result by scenario")
+    ax.set_ylabel("Финансовый результат, млрд руб. за 6 месяцев")
+    ax.set_title("Финансовый результат: сценарии и изменение состава портфеля")
     fig.tight_layout(); fig.savefig(figdir / "scenario_results.png", dpi=160); plt.close(fig)
 
-    sev = structural[structural.scenario == "Severe"]
+    sev = portfolio_mix[portfolio_mix.scenario == "Severe"]
     fig, ax = plt.subplots(figsize=(8, 4.5))
     for p, g in sev.groupby("target_product"):
-        ax.plot(g.target_share * 100, g.risk_adjusted_financial_result_bn, label=p)
-    ax.axhline(0, linewidth=1); ax.set_xlabel("Target product share, %"); ax.set_ylabel("RUB bn, 6M"); ax.set_title("Structural sensitivity — Severe"); ax.legend()
-    fig.tight_layout(); fig.savefig(figdir / "structural_sensitivity_severe.png", dpi=160); plt.close(fig)
+        ax.plot(g.target_share * 100, g.risk_adjusted_financial_result_bn, label=PRODUCT_LABELS[p])
+    ax.axhline(0, linewidth=1); ax.set_xlabel("Доля выбранного продукта, %"); ax.set_ylabel("Финансовый результат, млрд руб. за 6 месяцев"); ax.set_title("Чувствительность к продуктовому составу: тяжёлый сценарий"); ax.legend()
+    fig.tight_layout(); fig.savefig(figdir / "portfolio_mix_sensitivity_severe.png", dpi=160); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(mortgage.mortgage_pricing_rate * 100, mortgage.risk_adjusted_financial_result_bn)
-    ax.axhline(0, linewidth=1); ax.set_xlabel("Mortgage pricing proxy, %"); ax.set_ylabel("RUB bn, 6M"); ax.set_title("Mortgage pricing sensitivity — Base")
+    ax.axhline(0, linewidth=1); ax.set_xlabel("Ипотечная ставка-заменитель, %"); ax.set_ylabel("Финансовый результат, млрд руб. за 6 месяцев"); ax.set_title("Чувствительность к ипотечной ставке: базовый сценарий")
     fig.tight_layout(); fig.savefig(figdir / "mortgage_pricing_sensitivity.png", dpi=160); plt.close(fig)
 
 
 def build_report(df: pd.DataFrame, cfg: ModelConfig, qa: pd.DataFrame, adequacy: pd.DataFrame, sigmas: pd.DataFrame, product_results: pd.DataFrame, summary: pd.DataFrame, reverse: pd.DataFrame, factor: pd.DataFrame, robustness: pd.DataFrame) -> str:
     base = baseline_table(df, cfg)
-    lines = [f"# {cfg.research_title}", "", "## Research design", "",
-             f"Object: **{cfg.portfolio_nature}**.",
-             f"Primary question: **{cfg.primary_research_question}**.",
-             f"Baseline: {cfg.baseline_date.date()}; horizon: {cfg.horizon_years:.1f} year (2026H2).",
-             f"Four-product baseline exposure: **RUB {base.exposure.sum():,.1f} bn** (derived from the current dataset, not hard-coded).",
-             "Published VTB exposures anchor the baseline, while external pricing/funding proxies and scenario assumptions make the modeled portfolio synthetic.",
-             "The model calculates an annualized credit-risk-adjusted spread and a six-month risk-adjusted financial result. It is not VTB actual profit, NIM, internal margin or RAROC.", "",
-             "## Data adequacy", ""]
+    lines = [f"# {cfg.research_title}", "", "## Дизайн исследования", "",
+             f"Объект: **{russian_text(cfg.portfolio_nature)}**.",
+             f"Исследовательский вопрос: **{russian_text(cfg.primary_research_question)}**",
+             f"Базовая дата: {cfg.baseline_date.strftime('%d.%m.%Y')}; горизонт: {cfg.horizon_years:.1f} года — второе полугодие 2026 года (2026H2).",
+             f"Общая экспозиция четырёх продуктов: **{base.exposure.sum():,.1f} млрд руб.**; сумма рассчитана из текущих данных.",
+             "Публичные экспозиции ВТБ задают ориентиры объёма. В сочетании с внешними ставками и сценарными предпосылками они образуют синтетический портфель.",
+             "Модель исследует влияние продуктового состава на финансовый результат с учётом кредитного риска и величину кредитных потерь. Критические доли ищутся там, где существует допустимое пересечение границы в сторону ухудшения результата (adverse crossing); наличие порога не предполагается заранее.",
+             "RAFR (risk-adjusted financial result — финансовый результат с учётом кредитного риска) не является фактической прибылью ВТБ, NIM (net interest margin — чистой процентной маржой), внутренней продуктовой маржой или RAROC (risk-adjusted return on capital — доходностью капитала с учётом риска).", "",
+             "Публичные данные и рыночные показатели-заменители → синтетический базовый портфель → финансовый стресс → чувствительность к продуктовому составу → чувствительность к факторам → обратное стресс-тестирование → управленческая интерпретация.", "",
+             "## Термины и сокращения", "", TERMINOLOGY_NOTE, "",
+             "Продукты: Mortgage (ипотека), Consumer (потребительские кредиты), Auto (автокредиты), Cards (кредитные карты).", "",
+             "## Происхождение исходных данных и результатов", "",
+             "| Категория | Элементы модели |", "|---|---|",
+             "| FACT (опубликованный факт) | Компоненты экспозиции и ожидаемых кредитных убытков там, где источник проверен. Реконструированная и интерполированная история остаётся вспомогательной. |",
+             "| MARKET PROXY (рыночный показатель-заменитель) | Внешние ставки Банка России по кредитам и фондированию; они не являются доходностью продуктов ВТБ или внутренней трансфертной ценой фондирования. |",
+             "| SYNTHETIC (синтетическая конструкция) | Сочетание четырёх публичных экспозиций с внешними ставками в модельный портфель. |",
+             "| MODEL ASSUMPTION (модельная предпосылка) | Множители умеренного и тяжёлого финансового стресса и сдвиги продуктовых долей. |",
+             "| CALCULATED (расчётная величина) | Продуктовый показатель стоимости риска, CRAS, шестимесячный RAFR и допустимые пороги. |", "",
+             "## Достаточность данных", ""]
     for _, r in adequacy.iterrows():
-        lines.append(f"- **{r['item']}**: {r['value']} — {r['assessment']}")
-    lines += ["", "## Baseline", "", "| Product | Exposure | Weight | ECL rate | Credit cost | Pricing | Funding | CRAS | RAFR 6M |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
+        lines.append(f"- **{russian_text(r['item'])}**: {russian_text(r['value'])} — {russian_text(r['assessment'])}")
+    lines += ["", "## Базовый портфель", "", "Экспозиции и результат — в млрд руб.; ставки, стоимость риска и спред — в годовом выражении. Доля резерва ECL — показатель запаса на дату, а не стоимость риска за период.", "",
+              "| Продукт | Экспозиция | Доля | Доля резерва ECL | Стоимость риска | Ставка по кредиту | Фондирование | Спред CRAS | Результат RAFR за 6 месяцев |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     bres = calculate_product_results(base, cfg.horizon_years, "Base")
     for _, r in bres.iterrows():
-        lines.append(f"| {r['product']} | {r['exposure']:,.1f} | {r['weight']:.2%} | {r['ecl_rate']:.2%} | {r['credit_cost']:.2%} | {r['product_rate']:.2%} | {r['funding_rate']:.2%} | {r['credit_risk_adjusted_spread']:.2%} | {r['risk_adjusted_financial_result_bn']:,.1f} |")
-    lines += ["", "## Scenario summary", "", "| Scenario | Credit loss, RUB bn | CRAS annualized | RAFR 6M, RUB bn |", "|---|---:|---:|---:|"]
-    for _, r in summary.iterrows():
-        lines.append(f"| {r['scenario']} | {r['credit_loss_bn']:,.1f} | {r['credit_risk_adjusted_spread']:.2%} | {r['risk_adjusted_financial_result_bn']:,.1f} |")
-    lines += ["", "## Calibration diagnostics", "", "Current sigma values are working scenario anchors, not statistically estimated forecast parameters.", "", sigmas.to_markdown(index=False), "", "## Reverse stress highlights", ""]
+        lines.append(f"| {PRODUCT_LABELS[r['product']]} | {r['exposure']:,.1f} | {r['weight']:.2%} | {r['ecl_rate']:.2%} | {r['credit_cost']:.2%} | {r['product_rate']:.2%} | {r['funding_rate']:.2%} | {r['credit_risk_adjusted_spread']:.2%} | {r['risk_adjusted_financial_result_bn']:,.1f} |")
+    for heading, names in [
+        ("Финансовые стресс-сценарии", ["Base", "Moderate", "Severe"]),
+        ("Эксперименты с продуктовой структурой", ["Base", "PortfolioMix", "SevereMix"]),
+    ]:
+        lines += ["", f"## {heading}", ""]
+        if heading == "Эксперименты с продуктовой структурой":
+            lines += ["Исходный состав сохраняет базовые доли. Чувствительность к продуктовому составу меняет доли четырёх продуктов при фиксированной общей экспозиции и базовых финансовых предпосылках; используется настроенный умеренный сдвиг долей. Тяжёлый сценарий с изменением состава сочетает тяжёлые финансовые предпосылки и настроенный тяжёлый сдвиг долей. Изменение состава является модельным экспериментом.", ""]
+        lines += ["| Сценарий / эксперимент | Кредитные потери, млрд руб. | Годовой спред CRAS | Результат RAFR за 6 месяцев, млрд руб. |", "|---|---:|---:|---:|"]
+        for _, r in summary[summary.scenario.isin(names)].iterrows():
+            label = "Исходный состав" if heading == "Эксперименты с продуктовой структурой" and r['scenario'] == "Base" else scenario_label(r['scenario'])
+            lines.append(f"| {label} | {r['credit_loss_bn']:,.1f} | {r['credit_risk_adjusted_spread']:.2%} | {r['risk_adjusted_financial_result_bn']:,.1f} |")
+    sigma_view = sigmas.copy()
+    sigma_view['product'] = sigma_view['product'].map(PRODUCT_LABELS)
+    sigma_view = sigma_view.rename(columns={
+        'product': 'Продукт', 'credit_cost_sigma': 'Станд. отклонение стоимости риска',
+        'product_rate_sigma': 'Станд. отклонение кредитной ставки', 'funding_rate_sigma': 'Станд. отклонение фондирования',
+        'credit_cost_n': 'Число наблюдений стоимости риска', 'product_rate_n': 'Число наблюдений кредитной ставки', 'funding_rate_n': 'Число наблюдений фондирования',
+    })
+    lines += ["", "## Диагностика калибровки", "", "Стандартные отклонения служат рабочими ориентирами сценариев и не являются статистически оценёнными параметрами прогноза. Ставки представлены в долях единицы.", "", sigma_view.to_markdown(index=False), "", "## Обратное стресс-тестирование", ""]
+    lines += ["Если исходный сценарий уже находится на критической границе или ниже, пересечения в сторону ухудшения из этой точки нет. Для продуктовых долей модель возвращает NA с причиной. Статус THRESHOLD_BELOW_CURRENT_1X (граница требует снижения текущей стоимости риска) обозначает рассчитанный множитель ниже 1; это не порог ухудшения. Статус ALREADY_AT_OR_BELOW_BOUNDARY (исходный результат уже на границе или ниже) сопровождает NA для продуктовых долей.", "",
+              "Множитель измеряется в разах относительно текущей стоимости риска; критическая доля — в долях единицы.", ""]
     sub = reverse[reverse.reverse_type.isin(["portfolio_credit_cost_multiplier", "critical_product_share_vs_mortgage"])]
-    lines.append("| Scenario | Type | Product | Threshold | Status |")
+    lines.append("| Сценарий | Вид порога | Продукт | Порог | Пояснение статуса |")
     lines.append("|---|---|---|---:|---|")
     for _, r in sub.iterrows():
         th = "NA" if pd.isna(r.threshold) else f"{r.threshold:.4f}"
-        lines.append(f"| {r['scenario']} | {r['reverse_type']} | {r['target_product']} | {th} | {r['status']} |")
-    lines += ["", "## Largest local sensitivities", ""]
+        lines.append(f"| {scenario_label(r['scenario'])} | {REVERSE_LABELS[r['reverse_type']]} | {PRODUCT_LABELS[r['target_product']]} | {th} | {STATUS_LABELS.get(r['status'], r['status'])} |")
+    lines += ["", "## Наиболее сильные локальные чувствительности", ""]
     top = factor.reindex(factor.delta_result_bn.abs().sort_values(ascending=False).index).head(12)
-    lines.append("| Scenario | Product | Factor | Delta RAFR, RUB bn |")
+    lines.append("| Сценарий | Продукт | Изменение фактора | Изменение результата RAFR, млрд руб. |")
     lines.append("|---|---|---|---:|")
     for _, r in top.iterrows():
-        lines.append(f"| {r['scenario']} | {r['product']} | {r['factor']} | {r['delta_result_bn']:,.2f} |")
-    lines += ["", "## Robustness and assumption dependence", ""]
+        lines.append(f"| {scenario_label(r['scenario'])} | {PRODUCT_LABELS[r['product']]} | {FACTOR_LABELS.get(r['factor'], r['factor'])} | {r['delta_result_bn']:,.2f} |")
+    lines += ["", "## Устойчивость выводов и зависимость от предпосылок", ""]
     for _, r in robustness.iterrows():
-        lines.append(f"- **{r['classification']}**: {r['finding']} {r['dependency']}")
-    lines += ["", "## Interpretation constraints", "",
-              "- Pricing/funding are external market proxies, not VTB product yield or internal FTP.",
-              "- Base mortgage pricing keeps the dataset proxy; alternative market mortgage pricing is sensitivity only.",
-              "- Cards proxy does not model grace period, utilization, interchange or fees.",
-              "- Opex, fees, taxes and capital charges are excluded.",
-              "- Pochta Bank integration creates a perimeter break into 2026H1.",
-              "- The short history supports transparent scenario calibration and sensitivity/reverse stress, not robust econometric inference.", "", "## QA", ""]
+        lines.append(f"- **{russian_text(r['classification'])}**: {russian_text(r['finding'])} {russian_text(r['dependency'])}")
+    lines += ["", "## Управленческая интерпретация", "",
+              "Чувствительности и допустимые пороги обратного стресс-тестирования позволяют условно интерпретировать последствия изменения состава портфеля. При текущих ставках и границе критические доли могут отсутствовать; NA является допустимым исследовательским результатом. Автоматический выбор оптимального портфеля не реализован. Последующая оптимизация требует экспертной фиксации доходной части модели и финансовых стресс-сценариев.",
+              "", "## Ограничения интерпретации", "",
+              "- Ставки по кредитам и фондированию — внешние рыночные показатели-заменители, а не доходность продуктов ВТБ или внутренний FTP.",
+              "- Базовая ипотечная ставка взята из набора данных; альтернативная рыночная ставка используется только для анализа чувствительности.",
+              "- Карточная ставка не учитывает льготный период, использование лимита, межбанковское вознаграждение за карточные операции и комиссии.",
+              "- Операционные расходы, комиссии, налоги и стоимость капитала исключены.",
+              "- Интеграция Почта Банка меняет периметр к первому полугодию 2026 года.",
+              "- Короткая история позволяет проводить прозрачный сценарный анализ, анализ чувствительности и обратное стресс-тестирование, но не устойчивое эконометрическое оценивание.", "", "## Проверка качества данных", ""]
     for _, r in qa.iterrows():
-        lines.append(f"- {r['status']}: {r['check']} — {r['detail']}")
+        lines.append(f"- {STATUS_LABELS.get(r['status'], r['status'])}: {russian_text(r['check'])} — {russian_text(r['detail'])}")
     return "\n".join(lines) + "\n"
 
 
@@ -594,7 +770,7 @@ def run_model(config_path: Path) -> Dict[str, Path]:
     adequacy = data_adequacy_report(df, cfg)
     product_results, sigmas = build_scenarios(df, cfg)
     summary = scenario_summary(product_results, cfg.horizon_years)
-    structural = structural_sensitivity(product_results, cfg)
+    portfolio_mix = portfolio_mix_sensitivity(product_results, cfg)
     factor = factor_sensitivity(product_results, cfg)
     reverse = reverse_stress(product_results, cfg)
     mortgage = mortgage_pricing_sensitivity(df, cfg)
@@ -607,7 +783,7 @@ def run_model(config_path: Path) -> Dict[str, Path]:
         "baseline": outdir / "baseline_product_results.csv",
         "scenario_product": outdir / "scenario_product_results.csv",
         "scenario_summary": outdir / "scenario_summary.csv",
-        "structural": outdir / "structural_sensitivity.csv",
+        "portfolio_mix": outdir / "portfolio_mix_sensitivity.csv",
         "factor": outdir / "factor_sensitivity.csv",
         "reverse": outdir / "reverse_stress.csv",
         "mortgage": outdir / "mortgage_pricing_sensitivity.csv",
@@ -620,13 +796,14 @@ def run_model(config_path: Path) -> Dict[str, Path]:
     product_results[product_results.scenario == "Base"].to_csv(files["baseline"], index=False)
     product_results.to_csv(files["scenario_product"], index=False)
     summary.to_csv(files["scenario_summary"], index=False)
-    structural.to_csv(files["structural"], index=False)
+    portfolio_mix.to_csv(files["portfolio_mix"], index=False)
     factor.to_csv(files["factor"], index=False)
     reverse.to_csv(files["reverse"], index=False)
     mortgage.to_csv(files["mortgage"], index=False)
     robustness.to_csv(files["robustness"], index=False)
     files["report"].write_text(build_report(df, cfg, qa, adequacy, sigmas, product_results, summary, reverse, factor, robustness), encoding="utf-8")
-    make_figures(summary, structural, mortgage, outdir)
+    make_figures(summary, portfolio_mix, mortgage, outdir)
+    files["structural"] = files["portfolio_mix"]  # Legacy returned-key alias.
     return files
 
 
@@ -635,8 +812,10 @@ def main() -> None:
     p.add_argument("--config", default="config/model_config.json")
     args = p.parse_args()
     files = run_model(Path(args.config).resolve())
-    print("Model completed successfully.")
+    print("Расчёт модели успешно завершён.")
     for k, v in files.items():
+        if k == "structural":  # Compatibility key is not a presentation label.
+            continue
         print(f"{k}: {v}")
 
 

@@ -1,94 +1,102 @@
-# Current model decisions
+# Текущие методологические решения
 
-This is the current working model state after the 1–18 methodology questionnaire. It is intentionally revisable.
+Это пересматриваемое рабочее состояние модели после методологического опроса 1–18.
 
-## Article framing
+## Исследовательская задача
 
-Working title: **«Стресс-тестирование риск-доходности продуктовой структуры розничного кредитного портфеля как инструмент управления рисками банка»**.
+Рабочее название статьи: **«Стресс-тестирование риск-доходности продуктовой структуры розничного кредитного портфеля как инструмент управления рисками банка»**.
 
-The model studies a synthetic portfolio calibrated on public VTB and Bank of Russia data. VTB is the public calibration source, not the object of a bank-specific profitability assessment. The central research question is where additional modeled income from higher-risk products ceases to compensate for credit losses and reduced stress resilience.
+Объект — синтетический портфель, откалиброванный на публичных данных ВТБ и Банка России. ВТБ служит источником калибровки; модель не восстанавливает его внутреннюю продуктовую прибыльность. Исследуется влияние продуктового состава на спред с учётом кредитного риска, шестимесячный финансовый результат, величину кредитных потерь и устойчивость к стрессу.
 
-## Research target
-Quantify how the product structure of a four-product retail credit portfolio changes:
-- annualized credit-risk-adjusted spread;
-- six-month risk-adjusted financial result;
-- credit-loss burden;
-- stress resilience and reverse-stress thresholds.
+Цель — найти критические продуктовые доли там, где существует допустимое пересечение границы в сторону ухудшения результата (adverse crossing), уровни безубыточной стоимости риска, предельные эффекты замещения ипотеки и чувствительность к факторам. Наличие критической доли не предполагается заранее; сценарные таблицы служат основанием для интерпретации.
 
-The intended primary results are economically interpretable boundaries: critical product shares where feasible, break-even credit-cost levels, marginal effects of replacing Mortgage, and factor sensitivities. Scenario tables are supporting evidence rather than the final scientific contribution.
+## Время и периметр
 
-The objective is not to reconstruct VTB internal profitability.
+- История для калибровки в текущем Excel: 31.12.2023–30.06.2026.
+- Базовая дата: 30.06.2026, первое полугодие 2026 года (2026H1).
+- Горизонт стресса: второе полугодие 2026 года (2026H2), 0,5 года.
 
-## Time design
-- Historical/calibration window in the current Excel: 31.12.2023–30.06.2026.
-- Baseline: 30.06.2026.
-- Stress horizon: 2026H2 (0.5 year).
-
-## Baseline perimeter
-Use the four 2026H1 public VTB product exposures in the newest dataset as calibration anchors, subject to source consistency QA. Their combination with external pricing/funding proxies defines a synthetic baseline; do not call it VTB's actual product economics or rescale it to a broader 7 tn retail total.
+Четыре публичные продуктовые экспозиции ВТБ на базовую дату используются как ориентиры при условии согласованности источников. Экспозиция (exposure) — объём кредитных требований по продукту. В сочетании с внешними ставками они образуют синтетический портфель; он не отражает фактическую экономику продуктов ВТБ и не масштабируется до более широкого розничного портфеля в 7 трлн руб.
 
 `portfolio_total = sum(Mortgage, Consumer, Auto, Cards exposure at 30.06.2026)`
 
-Current dataset result: RUB 6,573.0 bn.
+Здесь Mortgage (ипотека), Consumer (потребительские кредиты), Auto (автокредиты), Cards (кредитные карты). Итог текущего набора данных: 6 573,0 млрд руб.; в коде сумма определяется динамически.
 
-## Credit risk
-Primary product flow measure:
+## Кредитный риск
+
+Основной показатель — стоимость кредитного риска (credit cost), приведённая к годовому выражению:
 
 `CC_ann = 2 * ECL_remeasurement_H / ((Exposure_prev + Exposure_current)/2)`
 
-Secondary stock indicator:
+ECL (expected credit losses — ожидаемые кредитные убытки): `ECL_remeasurement_H` — переоценка за полугодие; `Exposure_prev` и `Exposure_current` — предыдущая и текущая экспозиции. Дополнительный показатель запаса — доля резерва:
 
 `ECL_rate = ECL_reserve / Exposure`
 
-Base 2026H1 uses the direct product formula because the current dataset contains the required product components. Group CoR scaling is a fallback only.
+В базовом варианте используется прямая продуктовая формула: необходимые компоненты есть в текущем наборе данных. Масштабирование по CoR (cost of risk — стоимости риска группы) допускается только как резервный подход; официальный CoR и исследовательский продуктовый показатель различаются по охвату и определению.
 
-## Pricing and funding
-Use current Bank of Russia external proxies stored in the dataset. No bank-specific yield or FTP reconstruction.
+## Ставки и фондирование
 
-Base does not synthetically correct:
-- Mortgage for subsidy compensation;
-- Cards for grace period/utilization/interchange.
+Используются внешние показатели-заменители Банка России (market proxies), сохранённые в наборе данных: pricing (ставка по кредиту) и funding (стоимость фондирования). Доходность ВТБ и FTP (funds transfer pricing — внутреннее трансфертное ценообразование на фондирование) не восстанавливаются.
 
-These limitations are handled with sensitivity and discussion.
+Базовый вариант не корректирует ипотечную ставку на компенсацию субсидий, а карточную — на льготный период (grace period), использование лимита (utilization) или межбанковское вознаграждение за карточные операции (interchange). Ограничения рассматриваются через анализ чувствительности и обсуждение.
 
-## Result metrics
-Annualized percentage:
+## Финансовые показатели
+
+CRAS (credit-risk-adjusted spread — спред с учётом кредитного риска) в годовом выражении:
 
 `CRAS_i = Pricing_i - Funding_i - CC_i`
 
 `CRAS_P = sum(w_i * CRAS_i)`
 
-Six-month money result:
+RAFR (risk-adjusted financial result — финансовый результат с учётом кредитного риска) за шесть месяцев:
 
 `RAFR_i,6M = Exposure_i * CRAS_i * 0.5`
 
 `RAFR_P,6M = sum(RAFR_i,6M)`
 
-No opex, fees, taxes or capital charge in Base. No product RAROC.
+`w_i` — доля продукта, `CC_i` — годовая стоимость кредитного риска. Формулы не изменены. Комиссии, Opex (operating expenses — операционные расходы), налоги и стоимость капитала исключены. RAFR не является фактической прибылью ВТБ, NIM (net interest margin — чистой процентной маржой), внутренней продуктовой маржой или RAROC (risk-adjusted return on capital — доходностью капитала с учётом риска).
 
-This is the current working income-side specification. Its arithmetic is fixed for the present model run, while the economic comparability of public product-pricing proxies remains a key robustness issue for the final article.
+Рабочая спецификация доходной части сохранена; экономическая сопоставимость публичных продуктовых ставок остаётся ключевым вопросом устойчивости выводов статьи.
 
-## History and calibration
-The six-date history is sufficient for scenario calibration/range checks but not for robust statistical estimation. Current Moderate/Severe coefficients in config are working defaults and can be replaced after further stress-scenario design.
+## История и калибровка
 
-Known reconstructed 30.06.2024 exposure values remain in the dataset for continuity but are not treated as equal-quality primary calibration inputs. Current config excludes 30.06.2024 and 31.12.2024 credit-cost rows from primary sigma calibration because the latter also depends on the reconstructed prior exposure.
+Шести отчётных дат достаточно для прозрачного сценарного анализа и проверки диапазонов, но недостаточно для устойчивого статистического оценивания. Коэффициенты умеренного и тяжёлого сценариев остаются рабочими предпосылками, которые могут пересматриваться после экспертной фиксации сценариев.
 
-## Structural stress
-Total four-product exposure remains fixed at the dynamically calculated 2026H1 Base total. Current structural scenario shifts are explicit percentage-point assumptions from Mortgage into Consumer/Auto/Cards and are provisional.
+Реконструированные экспозиции на 30.06.2024 сохранены для непрерывности истории, но не равнозначны проверенным исходным данным. Из основной калибровки стандартного отклонения стоимости риска исключены 30.06.2024 и 31.12.2024: последняя дата также зависит от реконструированной предыдущей экспозиции. Интеграция Почта Банка меняет периметр к 2026H1; изменения к этой дате нельзя автоматически считать органическим ростом.
 
-## Reverse stress
-Critical boundary default: `RAFR_6M = 0`.
+## Финансовый стресс и продуктовый состав
 
-Find where feasible:
-- portfolio credit-cost multiplier;
-- critical Consumer/Auto/Cards share when increased at Mortgage's expense;
-- own break-even credit cost;
-- marginal break-even credit cost versus Mortgage.
+Финансовые сценарии — базовый (Base), умеренный (Moderate) и тяжёлый (Severe). Продуктовый состав сохраняется, меняются финансовые предпосылки.
 
-Return `NA` when no feasible crossing exists.
+Эксперименты с составом — исходный состав (Base Mix), чувствительность к продуктовому составу (Portfolio-mix sensitivity, PortfolioMix) и тяжёлый сценарий с изменением состава (Severe + Portfolio Mix, SevereMix). Общая экспозиция остаётся равной динамически рассчитанной базовой сумме. PortfolioMix применяет настроенный умеренный сдвиг при базовых финансовых предпосылках; SevereMix сочетает тяжёлые финансовые предпосылки и настроенный тяжёлый сдвиг. Доли переносятся из ипотеки в остальные продукты; величины в процентных пунктах остаются рабочими предпосылками. Активный ключ: `portfolio_mix_shift_pp`.
 
-## Open tasks, not blockers
-1. Page-level reconciliation of 2026H1 product exposure/ECL/ECL remeasurement to the official VTB IFRS PDF.
-2. Final choice of Moderate/Severe shock magnitudes after inspecting generated adequacy/calibration diagnostics.
-3. Final article wording around mortgage/card pricing limitations.
-4. Optional later optimization only after scenario/sensitivity/reverse-stress results are stable.
+## Обратное стресс-тестирование
+
+Обратное стресс-тестирование (reverse stress) ищет параметры достижения критической границы. Текущая граница: `RAFR_6M = 0`.
+
+При допустимом решении рассчитываются множитель стоимости риска портфеля, критическая доля каждого из трёх продуктов при замещении ипотеки, собственная безубыточная стоимость риска (break-even credit cost) и предельная безубыточная стоимость риска относительно ипотеки.
+
+Если исходный сценарий уже находится на границе или ниже, пересечение в сторону ухудшения из этой точки отсутствует. Для продуктовых долей возвращается NA (not available — порог не представлен) со статусом `ALREADY_AT_OR_BELOW_BOUNDARY` (исходный результат уже на границе или ниже). `THRESHOLD_BELOW_CURRENT_1X` (порог ниже текущего множителя 1) означает, что граница требует снижения стоимости риска; это не порог ухудшения. Если пересечение отсутствует в допустимом диапазоне долей, также возвращается NA с причиной.
+
+## Последовательность и происхождение величин
+
+Публичные данные и рыночные показатели-заменители → синтетический базовый портфель → финансовый стресс → чувствительность к составу → чувствительность к факторам → обратное стресс-тестирование → управленческая интерпретация.
+
+- FACT (проверенный опубликованный факт): компоненты экспозиции и ECL там, где источник проверен.
+- MARKET PROXY (рыночный показатель-заменитель): ставки по кредитам и фондированию.
+- SYNTHETIC (синтетическая конструкция): их сочетание в модельный портфель.
+- MODEL ASSUMPTION (модельная предпосылка): стрессовые множители и сдвиги долей.
+- CALCULATED (расчётная величина): продуктовая стоимость риска, CRAS, RAFR и допустимые пороги.
+
+Интерполяция и реконструкция остаются вспомогательными данными и не объявляются проверенными фактами.
+
+## Открытые вопросы и последующий этап
+
+1. Постраничная сверка экспозиций, резервов и переоценки ECL за 2026H1 с официальной отчётностью ВТБ по МСФО (IFRS — International Financial Reporting Standards, международные стандарты финансовой отчётности).
+2. Окончательный выбор величин умеренного и тяжёлого финансового стресса и сдвигов состава после анализа диагностик.
+3. Окончательное изложение ограничений ипотечных и карточных ставок.
+4. Возможная оптимизация после экспертной фиксации доходной части и стресс-сценариев.
+
+Текущий этап даёт условную управленческую интерпретацию, без автоматического выбора лучшего портфеля, оптимизации LGD (loss given default — доли потерь при дефолте), распределения капитала, слоя RWA (risk-weighted assets — активов, взвешенных по риску), моделирования Монте-Карло или регрессии и ML (machine learning — машинного обучения).
+
+Полные расшифровки: [Термины и сокращения](TERMINOLOGY_RU.md).

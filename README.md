@@ -1,12 +1,24 @@
 # finatlon-retail-stress-test
 
-Reproducible stress testing of a synthetic four-product retail credit portfolio calibrated on public VTB and Bank of Russia data.
+Воспроизводимая модель стресс-тестирования синтетического розничного кредитного портфеля, откалиброванного на публичных данных ВТБ и Банка России.
 
-## Main research artifact
+Модель исследует, как продуктовый состав влияет на финансовый результат с учётом кредитного риска и величину кредитных потерь в базовых и стрессовых условиях. Она ищет критические доли там, где существует допустимое пересечение границы в сторону ухудшения результата (adverse crossing). Если такого пересечения нет, возвращается NA (not available — порог не представлен) с поясняющим статусом.
 
-- [`notebooks/03_stress_model_calibration.ipynb`](notebooks/03_stress_model_calibration.ipynb) — presentation-style research notebook with methodology, tables, figures and findings.
+Публичные данные и рыночные показатели-заменители → синтетический базовый портфель на 30.06.2026 → финансовый стресс → чувствительность к продуктовому составу → чувствительность к финансовым факторам → обратное стресс-тестирование (reverse stress) → управленческая интерпретация.
 
-## Run locally
+Финансовые сценарии: **базовый (Base), умеренный (Moderate), тяжёлый (Severe)**. Эксперименты с продуктовой структурой: **исходный состав (Base Mix)**, **чувствительность к продуктовому составу (Portfolio-mix sensitivity, техническое имя PortfolioMix)** и **тяжёлый сценарий с изменением состава (Severe + Portfolio Mix, SevereMix)**. Меняются доли ипотеки (Mortgage), потребительских кредитов (Consumer), автокредитов (Auto) и кредитных карт (Cards) при неизменной общей экспозиции — объёме кредитных требований. PortfolioMix использует базовые финансовые предпосылки и настроенный умеренный сдвиг долей; SevereMix — тяжёлые финансовые предпосылки и настроенный тяжёлый сдвиг долей.
+
+Основные показатели: CRAS (credit-risk-adjusted spread — спред с учётом кредитного риска, в годовом выражении) и RAFR (risk-adjusted financial result — финансовый результат с учётом кредитного риска, за шесть месяцев). RAFR не является фактической прибылью ВТБ, NIM (net interest margin — чистой процентной маржой), внутренней продуктовой маржой или RAROC (risk-adjusted return on capital — доходностью капитала с учётом риска). Комиссии, операционные расходы, налоги и стоимость капитала исключены.
+
+Ставки по кредитам и стоимость фондирования — внешние рыночные показатели-заменители (market proxies). Короткая история, изменение периметра из-за интеграции Почта Банка и ограничения ипотечных и карточных ставок ограничивают интерпретацию. Оптимизация портфеля и автоматический выбор решений — возможный последующий этап после экспертной фиксации доходной части модели и стресс-сценариев.
+
+## Исследовательские материалы
+
+- [`notebooks/03_stress_model_calibration.ipynb`](notebooks/03_stress_model_calibration.ipynb) — исследовательский блокнот с методикой, таблицами, графиками и выводами.
+- [`other/MODEL_DECISIONS.md`](other/MODEL_DECISIONS.md) — текущие методологические решения.
+- [`other/TERMINOLOGY_RU.md`](other/TERMINOLOGY_RU.md) — переводы терминов и расшифровки сокращений.
+
+## Локальный запуск
 
 ```bash
 python -m pip install -r other/requirements.txt
@@ -14,12 +26,13 @@ pytest -q
 python src/stress_model.py --config config/model_config.json
 ```
 
-Generated tables, figures and the model report are written to `outputs/`.
+Таблицы, графики и отчёт записываются в `outputs/`. Активные технические имена: `portfolio_mix_shift_pp`, `portfolio_mix_sensitivity.csv` и `figures/portfolio_mix_sensitivity_severe.png`. Поле `scenario_type` (тип сценария) в продуктовых результатах и сводке принимает значения `baseline` (базовый), `financial_stress` (финансовый стресс), `portfolio_mix` (изменение состава), `combined` (сочетание финансового стресса и изменения состава). Совместимые прежние имена конфигурации и функций поддерживаются.
 
-## Repository layout
+## Структура репозитория
 
-- `src/` — model implementation;
-- `tests/` — active automated tests;
-- `config/` — active model configuration;
-- `notebooks/` — research presentation;
-- `other/` — datasets, methodology context, source QA and retained legacy files.
+- `src/` — расчётная модель;
+- `tests/` — автоматические проверки;
+- `config/` — активная конфигурация;
+- `notebooks/` — исследовательское представление;
+- `other/` — данные, методологический контекст, проверка источников и архивные файлы;
+- `outputs/` — сформированные результаты; каталог исключён из отслеживания Git.

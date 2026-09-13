@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 import numpy as np
 import pandas as pd
+import json
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -63,9 +65,9 @@ def test_half_year_result_and_annualized_spread():
     assert np.isclose(c.risk_adjusted_financial_result_bn, c.exposure * spread * 0.5)
 
 
-def test_structural_shift_keeps_a1_total_fixed():
+def test_portfolio_mix_shift_keeps_a1_total_fixed():
     b = sm.baseline_table(sample_df(), cfg())
-    s = sm.apply_structural_shift(b, {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5})
+    s = sm.apply_portfolio_mix_shift(b, {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5})
     assert np.isclose(s.exposure.sum(), b.exposure.sum())
     assert np.isclose(s.weight.sum(), 1.0)
     assert s.loc[s["product"] == "Mortgage", "weight"].iloc[0] < b.loc[b["product"] == "Mortgage", "weight"].iloc[0]
@@ -118,3 +120,48 @@ def test_research_framing_is_loaded_from_config():
     assert "синтет" in loaded.portfolio_nature.lower() or "synthetic" in loaded.portfolio_nature.lower()
     assert loaded.research_title
     assert loaded.primary_research_question
+
+
+def test_mix_scenarios_keep_financial_assumptions_and_total():
+    config = sm.load_config(ROOT / "config/model_config.json")
+    data = sm.load_dataset(ROOT / config.input_file, config.data_sheet)
+    products, _ = sm.build_scenarios(data, config)
+    summary = sm.scenario_summary(products, config.horizon_years)
+    assert summary.scenario.tolist() == sm.SCENARIO_ORDER
+    assert summary.scenario_type.tolist() == ["baseline", "financial_stress", "financial_stress", "portfolio_mix", "combined"]
+    assert np.allclose(summary.exposure_bn, summary.exposure_bn.iloc[0])
+    for mix, financial, shift in [("PortfolioMix", "Base", "moderate"), ("SevereMix", "Severe", "severe")]:
+        actual = products[products.scenario.eq(mix)].set_index("product")
+        starting = products[products.scenario.eq(financial)].set_index("product")
+        pd.testing.assert_frame_equal(actual[["product_rate", "funding_rate", "credit_cost"]], starting[["product_rate", "funding_rate", "credit_cost"]], check_exact=True)
+        for product in sm.RISKIER_PRODUCTS:
+            assert np.isclose(actual.loc[product, "weight"] - starting.loc[product, "weight"], config.portfolio_mix_shift_pp[shift][product] / 100)
+
+
+def test_legacy_config_and_callable_aliases_preserve_results(tmp_path):
+    raw = json.loads((ROOT / "config/model_config.json").read_text(encoding="utf-8"))
+    current = sm.load_config(ROOT / "config/model_config.json")
+    raw["structural_shift_pp"] = raw.pop("portfolio_mix_shift_pp")
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    legacy = sm.load_config(path)
+    assert legacy == current
+    base = sm.baseline_table(sample_df(), legacy)
+    pd.testing.assert_frame_equal(sm.apply_structural_shift(base, legacy.structural_shift_pp["moderate"]), sm.apply_portfolio_mix_shift(base, current.portfolio_mix_shift_pp["moderate"]), check_exact=True)
+    for old, new in sm.SCENARIO_ALIASES.items():
+        pd.testing.assert_frame_equal(sm.calculate_product_results(base, 0.5, old), sm.calculate_product_results(base, 0.5, new), check_exact=True)
+    raw["portfolio_mix_shift_pp"] = {"moderate": {"Consumer": 99}}
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    with pytest.raises(ValueError, match="Conflicting"):
+        sm.load_config(path)
+
+
+def test_reverse_stress_preserves_already_below_boundary_interpretation():
+    results = sm.calculate_product_results(sm.baseline_table(sample_df(), cfg()), 0.5, "Base")
+    reverse = sm.reverse_stress(results, cfg())
+    shares = reverse[reverse.reverse_type.eq("critical_product_share_vs_mortgage")]
+    assert shares.status.eq("ALREADY_AT_OR_BELOW_BOUNDARY").all()
+    assert shares.threshold.isna().all()
+    multiplier = reverse[reverse.reverse_type.eq("portfolio_credit_cost_multiplier")].iloc[0]
+    assert multiplier.status == "THRESHOLD_BELOW_CURRENT_1X"
+    assert 0 <= multiplier.threshold < 1

@@ -28,7 +28,7 @@ python src/stress_model.py --config config/model_config.json
 
 Пример:
 
-`UPDATE_CONTEXT: Severe credit-cost shock для Auto увеличь, а structural stress пока оставь без изменений.`
+`UPDATE_CONTEXT: Severe credit-cost shock для Auto увеличь, а portfolio-mix sensitivity пока оставь без изменений.`
 
 Codex должен обновить контекст, config, затронутый код/тесты и `other/CONTEXT_CHANGELOG.md`, затем перезапустить QA.
 
@@ -42,3 +42,4 @@ Codex должен обновить контекст, config, затронуты
 - `config/model_config.json` — рабочие численные сценарные настройки.
 - `src/stress_model.py` — модель.
 - `tests/test_stress_model.py` — автоматические проверки.
+- `other/TERMINOLOGY_RU.md` — переводы терминов и расшифровки сокращений; исследовательские материалы и ответы пользователю готовятся преимущественно на русском.

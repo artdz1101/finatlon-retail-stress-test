@@ -25,7 +25,7 @@ The article studies a synthetic four-product portfolio calibrated on public VTB 
 | 15 | A, period changed | Use 2023–2026H1 history only for calibration/ranges; current Excel actually starts at 31.12.2023. Assess adequacy explicitly. |
 | 16 | B | Fill/use a missing value as a primary calculated input only where a strict reproducible identity exists; interpolation remains auxiliary. |
 | 17 | B | Main stress horizon = next six months (2026H2). |
-| 18 | A modified by 1A | Fixed total in structural tests equals the sum of the four 2026H1 product exposures from 1A, not 7 tn. |
+| 18 | A modified by 1A | Fixed total in portfolio-mix experiments equals the sum of the four 2026H1 product exposures from 1A, not 7 tn. |
 
 ## Consequence of 1A + 18
 Current dataset Base total is dynamically calculated:

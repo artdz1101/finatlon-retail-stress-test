@@ -32,6 +32,7 @@ apply it as a project-level change. Update the affected context files/config/cod
 Short numbered answers such as `1A 2B 3A...` are also project decisions and must be propagated into repository context when they affect the model.
 
 ## Interaction rules
+- Пишите пользователю и готовьте исследовательские материалы преимущественно на русском. При первом упоминании английского термина или сокращения приводите в скобках перевод и/или расшифровку; в таблицах и графиках предпочитайте русские подписи. Технические имена полей, функций, файлов и статусов сохраняйте, а их смысл поясняйте отдельно. Это правило относится и к последующим изменениям проекта.
 - Check current files/data before asking a question.
 - Do not ask again about a decision already present in context unless new evidence creates a real contradiction.
 - Prefer a transparent working default over blocking progress, but label it as provisional in ordinary language.
@@ -60,7 +61,7 @@ Detailed interpretation is in `other/DECISIONS_1_18.md`.
 - Stress horizon: **2026H2**, i.e. 0.5 year.
 - Baseline perimeter: the four product exposures at 30.06.2026 from the current dataset, if source QA remains consistent.
 - Portfolio size is **not 7 tn by assumption**. It is calculated as `sum(exposure_i)` for the four baseline products. With the current dataset this is RUB 6,573.0 bn, but code must derive it dynamically.
-- Structural experiments keep that baseline four-product total fixed and change only weights.
+- Portfolio-mix experiments keep that baseline four-product total fixed and change only weights.
 
 ### History
 - Current usable repository window: **31.12.2023–30.06.2026** (six reporting dates / 24 product rows in the current Excel).
@@ -133,13 +134,15 @@ Keep these modules available:
 - Base;
 - Moderate;
 - Severe;
-- Structural;
-- Combined;
+- PortfolioMix (Portfolio-mix sensitivity under Base financial assumptions);
+- SevereMix (Severe + Portfolio Mix);
 - factor sensitivity;
 - product-share sensitivity;
 - reverse stress.
 
-Current Moderate/Severe numerical calibration is a **working default**, not a final research claim. The short history is used only as a calibration anchor. Current structural shifts are explicit percentage-point assumptions in config so they do not depend on questionable interpolated half-year weights.
+Financial stress scenarios are Base, Moderate and Severe. Portfolio structure experiments comprise Base Mix (unchanged baseline composition), Portfolio-mix sensitivity and Severe + Portfolio Mix. A portfolio-mix experiment changes product shares at fixed total exposure; Severe + Portfolio Mix combines Severe financial assumptions with a portfolio-mix shift.
+
+Current Moderate/Severe numerical calibration is a **working default**, not a final research claim. The short history is used only as a calibration anchor. Current portfolio-mix shifts are explicit percentage-point assumptions in config so they do not depend on questionable interpolated half-year weights. Active config uses `portfolio_mix_shift_pp` and active outputs use `portfolio_mix_sensitivity`.
 
 ## Reverse stress
 At minimum calculate:
@@ -158,7 +161,7 @@ If a threshold does not exist in the feasible domain, return `NA` with the direc
 - scenario product results;
 - scenario summary;
 - factor sensitivity;
-- structural sensitivity;
+- portfolio-mix sensitivity;
 - reverse stress;
 - mortgage pricing sensitivity (if enabled);
 - figures;

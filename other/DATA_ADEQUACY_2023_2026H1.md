@@ -18,7 +18,7 @@ It is enough to:
 - anchor the 2026H1 Base;
 - inspect historical ranges and direction of pricing/funding/credit-risk changes;
 - calibrate transparent working stress magnitudes;
-- run structural sensitivity at fixed portfolio size;
+- run portfolio-mix sensitivity at fixed portfolio size;
 - calculate reverse-stress thresholds mathematically;
 - test robustness of conclusions under alternative assumptions.
 

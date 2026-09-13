@@ -1,2 +1,4 @@
 # finatlon-retail-stress-test
-Reproducible stress-testing model for a synthetic retail credit portfolio
+Воспроизводимая модель стресс-тестирования синтетического розничного кредитного портфеля.
+
+Описание исследования и команды запуска: [основной README](../README.md). Переводы английских терминов и расшифровки сокращений: [словарь](TERMINOLOGY_RU.md).

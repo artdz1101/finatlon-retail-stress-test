@@ -1,5 +1,18 @@
 # Context changelog
 
+## 2026-09-13 — русский язык исследовательских материалов
+- Закреплено предпочтение русского языка в правилах проекта; английские термины и сокращения поясняются переводом и/или расшифровкой.
+- Переведены README, текущая методика, генератор отчёта, подписи графиков и исследовательский блокнот; добавлен словарь `other/TERMINOLOGY_RU.md`.
+- Технические имена полей, сценариев, файлов и статусов сохранены. Перевод применяется к представлению результатов; исходные данные, конфигурация и арифметика не менялись.
+
+## 2026-09-13 — portfolio-mix terminology and presentation
+- Renamed active Structural/Combined scenarios to PortfolioMix/SevereMix, presented as Portfolio-mix sensitivity and Severe + Portfolio Mix.
+- Distinguished financial stress scenarios (Base/Moderate/Severe) from portfolio structure experiments (Base Mix/Portfolio-mix sensitivity/Severe + Portfolio Mix); added scenario_type to product results and summary.
+- Renamed the active mix config key, sensitivity function/output and Severe figure; retained legacy configuration, constructor, callable and returned-key aliases.
+- Aligned README, current methodological context, generated report and executed notebook with conditional critical-share search and management interpretation.
+- Added a compact FACT / MARKET PROXY / SYNTHETIC / MODEL ASSUMPTION / CALCULATED note and clarified already-breached-boundary statuses without changing reverse-stress arithmetic.
+- All 11 CSV artifacts retain exactly equal numerical results after scenario-name mapping; reverse-stress statuses and NA positions are unchanged. Configuration differs only in the mix-key name; both Excel files are unchanged by SHA-256. Validation details are in `other/RUN_VALIDATION.md` and `outputs/terminology_refactor_validation.csv`.
+
 ## 2026-09-09 — methodology questionnaire integrated
 - Integrated user selections: `1A 2B 3A 4A 5A 6(direct-data-first) 7A 8A 9A 10A 11C 12(A+B) 13A 14A 15A(2023–2026H1) 16B 17B 18(A1 sum)`.
 - Baseline total is now explicitly dynamic: sum of the four 2026H1 product exposures, not 7 tn.
