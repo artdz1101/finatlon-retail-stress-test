@@ -1,5 +1,12 @@
 # Context changelog
 
+## 2026-09-17 — synthetic margin and critical-margin methodology
+- Switched the active input to `other/dataset_vtb_main_clean.xlsx`, sheet `MODEL_DATA`.
+- Replaced `pricing - funding` as the primary income measure with `margin_anchor + lambda * (product_rate_proxy - weighted_product_rate)`.
+- Made product critical margin at portfolio `RAFR = 0` the main reverse-stress result; critical share is now secondary.
+- Replaced sigma scenarios with explicit Moderate (`credit cost +1 p.p.; margin anchor -0.5 p.p.`) and Severe (`+3 p.p.; -1 p.p.`) shocks.
+- Added compact critical-margin, stress and portfolio-mix outputs; updated code, tests, report, notebook and public documentation.
+
 ## 2026-09-13 — русский язык исследовательских материалов
 - Закреплено предпочтение русского языка в правилах проекта; английские термины и сокращения поясняются переводом и/или расшифровкой.
 - Переведены README, текущая методика, генератор отчёта, подписи графиков и исследовательский блокнот; добавлен словарь `other/TERMINOLOGY_RU.md`.

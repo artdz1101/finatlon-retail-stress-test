@@ -9,14 +9,14 @@ The repository is a **working research state**, not an immutable specification. 
 - Working title: **«Стресс-тестирование риск-доходности продуктовой структуры розничного кредитного портфеля как инструмент управления рисками банка»**.
 - The research object is a **synthetic four-product retail credit portfolio calibrated on public VTB and Bank of Russia data**, not VTB as a bank and not a reconstruction of VTB's internal profitability or portfolio-management decisions.
 - Public VTB exposure values provide calibration anchors for the baseline size and weights. Once combined with external pricing/funding proxies and model assumptions, the resulting portfolio is synthetic and must not be presented as VTB's actual product economics.
-- Central research question: **at what share of higher-risk products does additional modeled income cease to compensate for higher credit losses and loss of stress resilience?**
+- Central research question: **what additional synthetic margin must a riskier product generate to compensate for credit risk relative to Mortgage?**
 - The intended scientific output is a set of economically interpretable thresholds and sensitivity results, not a catalogue of source fields or scenario tables.
 - Public-facing notebooks and article materials must read as research communication: problem, method, results, interpretation and limitations. Do not expose internal discussions, questionnaire history, implementation logs or environment-specific troubleshooting.
 
 ## Source priority
 Unless the user explicitly changes it:
 1. Latest explicit user instruction in the current session.
-2. Newest numeric dataset in the repository (`other/dataset_vtb_main_v2.xlsx` now).
+2. Active numeric dataset in the repository (`other/dataset_vtb_main_clean.xlsx`, sheet `MODEL_DATA`).
 3. `other/AGENTS.md`, `other/MODEL_DECISIONS.md`, `other/DECISIONS_1_18.md`, `config/model_config.json`.
 4. Older datasets/chats only for provenance or unresolved gaps.
 
@@ -93,31 +93,23 @@ For 2026H1 Base, calculate credit cost **directly from the product components** 
 
 If those product components become unavailable or prove non-comparable, follow the fallback hierarchy in `other/DATA_GAPS_AND_FALLBACKS.md`; Group CoR scaling is only a fallback/sensitivity, not Base.
 
-## Pricing and funding
-Base uses the Bank of Russia rate proxies already stored in the dataset:
-- Mortgage: published borrower-side mortgage proxy in the dataset; do not add a subsidy compensation in Base.
-- Consumer: long-term household loan rate proxy.
-- Auto: auto-loan rate proxy.
-- Cards: short-term household loan rate proxy; do not add grace/utilization adjustments in Base.
-- Mortgage/Consumer/Auto funding: long-term household deposit proxy.
-- Cards funding: short-term household deposit proxy.
+## Synthetic income
+The old `pricing - funding` specification is no longer the primary income measure. Use the inputs from `MODEL_DATA`:
 
-The mortgage and card proxies have known economic limitations. Keep optional sensitivity analysis rather than silently correcting Base with invented coefficients.
+`synthetic_margin_i,t = margin_anchor_t + lambda_t * (product_rate_proxy_i,t - weighted_product_rate_t)`
+
+The pricing variables remain market proxies and do not represent actual VTB product yields. `margin_anchor` and `lambda` are model assumptions from the active dataset and must not be silently changed.
 
 ## Financial result
 Calculate both percentage and money results.
 
 Annualized percentage metric:
 
-`credit_risk_adjusted_spread_i = pricing_i - funding_i - credit_cost_i`
-
-Portfolio annualized spread:
-
-`credit_risk_adjusted_spread_P = sum(weight_i * credit_risk_adjusted_spread_i)`
+`risk_adjusted_rate_i = synthetic_margin_i - credit_cost_i`
 
 Six-month money result:
 
-`risk_adjusted_financial_result_i_6M = exposure_i * credit_risk_adjusted_spread_i * 0.5`
+`risk_adjusted_financial_result_i_6M = exposure_i * risk_adjusted_rate_i * 0.5`
 
 `risk_adjusted_financial_result_P_6M = sum_i(risk_adjusted_financial_result_i_6M)`
 
@@ -130,26 +122,12 @@ This is pre-operating and excludes fees/commissions, operating expenses, taxes a
 - These can be added later only through an explicit context change.
 
 ## Stress architecture
-Keep these modules available:
-- Base;
-- Moderate;
-- Severe;
-- PortfolioMix (Portfolio-mix sensitivity under Base financial assumptions);
-- SevereMix (Severe + Portfolio Mix);
-- factor sensitivity;
-- product-share sensitivity;
-- reverse stress.
+Keep Base, Moderate and Severe. Moderate adds 1 p.p. to credit cost and subtracts 0.5 p.p. from `margin_anchor`; Severe adds 3 p.p. to credit cost and subtracts 1 p.p. from `margin_anchor`. Do not add separate GDP, unemployment, inflation or key-rate factors.
 
-Financial stress scenarios are Base, Moderate and Severe. Portfolio structure experiments comprise Base Mix (unchanged baseline composition), Portfolio-mix sensitivity and Severe + Portfolio Mix. A portfolio-mix experiment changes product shares at fixed total exposure; Severe + Portfolio Mix combines Severe financial assumptions with a portfolio-mix shift.
-
-Current Moderate/Severe numerical calibration is a **working default**, not a final research claim. The short history is used only as a calibration anchor. Current portfolio-mix shifts are explicit percentage-point assumptions in config so they do not depend on questionable interpolated half-year weights. Active config uses `portfolio_mix_shift_pp` and active outputs use `portfolio_mix_sensitivity`.
+Portfolio-mix analysis is secondary sensitivity. Increase Consumer, Auto or Cards at the expense of Mortgage while keeping total exposure fixed; recompute the weighted pricing proxy and synthetic margins for the changed composition.
 
 ## Reverse stress
-At minimum calculate:
-- portfolio-wide credit-cost multiplier at which the six-month result reaches the critical boundary;
-- critical Consumer/Auto/Cards share when that product replaces Mortgage, if a feasible crossing exists;
-- product break-even credit cost;
-- marginal break-even credit cost versus Mortgage.
+The primary reverse-stress result is each product's `critical_margin`: the margin at which portfolio RAFR reaches zero. Calculate `required_margin_premium_vs_mortgage = critical_margin_i - current_mortgage_margin` for Consumer, Auto and Cards. Critical product share may remain only as a secondary result.
 
 If a threshold does not exist in the feasible domain, return `NA` with the direction/status. Do not force a number.
 
@@ -159,11 +137,12 @@ If a threshold does not exist in the feasible domain, return `NA` with the direc
 - data adequacy report;
 - baseline product results;
 - scenario product results;
-- scenario summary;
+- compact scenario summary;
+- critical margin table;
+- stress critical margin table;
 - factor sensitivity;
 - portfolio-mix sensitivity;
 - reverse stress;
-- mortgage pricing sensitivity (if enabled);
 - figures;
 - `model_report.md`.
 

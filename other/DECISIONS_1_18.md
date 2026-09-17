@@ -2,6 +2,10 @@
 
 This file records the user's current choices. They are revisable through `UPDATE_CONTEXT:`.
 
+## Methodology update: synthetic margin and critical margin
+
+The later explicit methodology update supersedes questionnaire choices 7–12 where they conflict with it. The active income measure is `margin_anchor + lambda * (product_rate_proxy - weighted_product_rate)` from `MODEL_DATA`; `pricing - funding` is no longer the primary income formula. The main research result is `critical_margin` at portfolio `RAFR = 0`, with required margin premium versus Mortgage. Product-share thresholds remain secondary sensitivity indicators.
+
 ## Research framing added after the questionnaire
 
 The article studies a synthetic four-product portfolio calibrated on public VTB and Bank of Russia data. Published VTB exposures anchor the initial size and weights, but the combination with external pricing/funding proxies and model assumptions must not be described as VTB's actual product profitability or management portfolio. The central output is the boundary at which additional modeled income from a riskier structure no longer compensates for credit losses and weaker stress resilience.

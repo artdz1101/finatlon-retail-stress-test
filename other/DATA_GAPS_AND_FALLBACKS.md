@@ -1,7 +1,7 @@
 # Data gaps, source QA and fallback hierarchy
 
 ## 1. 2026H1 product credit cost — what we already have
-The current `other/dataset_vtb_main_v2.xlsx` contains, for all four products:
+The active `other/dataset_vtb_main_clean.xlsx` contains, for all four products:
 - exposure at 31.12.2025;
 - exposure at 30.06.2026;
 - ECL reserve at 30.06.2026;
@@ -57,7 +57,7 @@ If even a defensible scaling anchor is unavailable, do not invent product credit
 ## 5. Pricing/funding gaps
 Public product-specific VTB yields and internal FTP are not available. Base therefore uses Bank of Russia external rate proxies. Do not attempt to reconstruct internal VTB pricing/funding.
 
-This means the modeled portfolio is synthetic even where its exposure anchors come from public VTB disclosures. The current CRAS/RAFR formula remains the working calculation, but the economic comparability of the income proxies—especially Mortgage and Cards—is a substantive limitation for threshold interpretation. A critical share must not be claimed if the selected proxy set produces no feasible adverse crossing.
+This means the modeled portfolio is synthetic even where its exposure anchors come from public VTB disclosures. The active income formula uses `margin_anchor + lambda * (product_rate_proxy - weighted_product_rate)`. The economic comparability of the pricing proxies remains a substantive limitation for critical-margin interpretation. Critical share is retained only as a secondary sensitivity result and must not be reported without a feasible crossing and status.
 
 June 2026 Bank of Russia reference page:
 `https://www.cbr.ru/statistics/bank_sector/int_rat/0626/`

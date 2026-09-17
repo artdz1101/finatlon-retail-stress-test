@@ -1,167 +1,119 @@
 from pathlib import Path
 import sys
+
 import numpy as np
 import pandas as pd
-import json
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 import stress_model as sm  # noqa: E402
 
 
-def sample_df():
-    rows = [
-        ["2025-12-31", "Mortgage", 4364.8, 73.5, 15.8, 73.5/4364.8, 2*15.8/((4052.6+4364.8)/2), 0.076, 0.122],
-        ["2025-12-31", "Consumer", 1644.8, 255.6, 19.6, 255.6/1644.8, 2*19.6/((1889.2+1644.8)/2), 0.144, 0.122],
-        ["2025-12-31", "Auto", 560.7, 91.0, 17.6, 91.0/560.7, 2*17.6/((614.1+560.7)/2), 0.169, 0.122],
-        ["2025-12-31", "Cards", 248.9, 46.1, 7.0, 46.1/248.9, 2*7.0/((276.8+248.9)/2), 0.271, 0.153],
-        ["2026-06-30", "Mortgage", 4279.8, 89.4, 14.7, 89.4/4279.8, 2*14.7/((4364.8+4279.8)/2), 0.090, 0.109],
-        ["2026-06-30", "Consumer", 1525.9, 246.7, 33.7, 246.7/1525.9, 2*33.7/((1644.8+1525.9)/2), 0.175, 0.109],
-        ["2026-06-30", "Auto", 543.9, 96.9, 12.0, 96.9/543.9, 2*12.0/((560.7+543.9)/2), 0.165, 0.109],
-        ["2026-06-30", "Cards", 223.4, 47.0, 6.6, 47.0/223.4, 2*6.6/((248.9+223.4)/2), 0.312, 0.130],
-    ]
-    return pd.DataFrame(rows, columns=sm.REQUIRED).assign(report_date=lambda x: pd.to_datetime(x.report_date))
-
-
 def cfg():
-    return sm.ModelConfig(
-        input_file="x",
-        data_sheet="DATA_MASTER",
-        baseline_date=pd.Timestamp("2026-06-30"),
-        history_start_date=pd.Timestamp("2025-12-31"),
-        history_end_date=pd.Timestamp("2026-06-30"),
-        horizon_years=0.5,
-        products=sm.PRODUCTS,
-        critical_result_bn=0.0,
-        scenario_calibration={"moderate": {"credit_cost_sigma": 0.5, "pricing_sigma": 0.25, "funding_sigma": 0.25}, "severe": {"credit_cost_sigma": 1.0, "pricing_sigma": 0.5, "funding_sigma": 0.5}},
-        credit_cost_calibration_exclude_dates=[],
-        structural_shift_pp={"moderate": {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5}, "severe": {"Consumer": 4.0, "Auto": 2.0, "Cards": 1.0}},
-        mortgage_pricing_sensitivity={"enabled": True, "alternative_market_rate": 0.178},
-        reverse_stress={"share_step": 0.001},
-        qa_tolerance=1e-8,
-        output_dir="outputs",
+    return sm.load_config(ROOT / "config" / "model_config.json")
+
+
+def sample_params():
+    rows = [
+        ["Mortgage", 60.0, 0.01, 0.10],
+        ["Consumer", 20.0, 0.04, 0.18],
+        ["Auto", 12.0, 0.05, 0.17],
+        ["Cards", 8.0, 0.07, 0.30],
+    ]
+    frame = pd.DataFrame(rows, columns=["product", "exposure", "credit_cost", "product_rate_proxy"])
+    frame["margin_anchor"] = 0.04
+    frame["lambda"] = 0.2
+    frame["period_factor"] = 0.5
+    return sm.recompute_margin(frame)
+
+
+def test_synthetic_margin_and_raf_result_are_correct():
+    params = sample_params()
+    weighted = float((params.exposure / params.exposure.sum() * params.product_rate_proxy).sum())
+    consumer = params.set_index("product").loc["Consumer"]
+    expected_margin = 0.04 + 0.2 * (0.18 - weighted)
+    assert np.isclose(consumer.synthetic_margin, expected_margin)
+    result = sm.calculate_product_results(params, 0.5, "Base").set_index("product").loc["Consumer"]
+    assert np.isclose(result.risk_adjusted_financial_result_bn,
+                      consumer.exposure * (expected_margin - consumer.credit_cost) * 0.5)
+
+
+def test_critical_margin_exactly_zeroes_portfolio_raf_result():
+    params = sm.calculate_product_results(sample_params(), 0.5, "Base")
+    threshold, status = sm.solve_critical_margin(params, "Consumer", cfg())
+    changed = params.copy()
+    changed.loc[changed["product"].eq("Consumer"), "synthetic_margin"] = threshold
+    changed["risk_adjusted_rate"] = changed.synthetic_margin - changed.credit_cost
+    total = float((changed.exposure * changed.risk_adjusted_rate * 0.5).sum())
+    assert status in {"FEASIBLE", "NEGATIVE_THRESHOLD"}
+    assert np.isclose(total, 0.0, atol=1e-12)
+
+
+def test_higher_credit_cost_does_not_reduce_critical_margin():
+    params = sm.calculate_product_results(sample_params(), 0.5, "Base")
+    before, _ = sm.solve_critical_margin(params, "Auto", cfg())
+    stressed = params.copy()
+    stressed.loc[stressed["product"].eq("Auto"), "credit_cost"] += 0.01
+    after, _ = sm.solve_critical_margin(stressed, "Auto", cfg())
+    assert after >= before
+    assert np.isclose(after - before, 0.01)
+
+
+def test_severe_is_not_less_stressful_than_moderate():
+    config = cfg()
+    data = sm.load_dataset(ROOT / config.input_file, config.data_sheet)
+    products = sm.build_scenarios(data, config)
+    summary = sm.scenario_summary(products).set_index("scenario")
+    assert summary.loc["Severe", "risk_adjusted_financial_result_bn"] <= summary.loc[
+        "Moderate", "risk_adjusted_financial_result_bn"
+    ]
+    assert summary.loc["Moderate", "risk_adjusted_financial_result_bn"] <= summary.loc[
+        "Base", "risk_adjusted_financial_result_bn"
+    ]
+
+
+def test_portfolio_mix_shift_keeps_total_exposure_fixed():
+    params = sample_params()
+    shifted = sm.apply_portfolio_mix_shift(params, "Consumer", 10.0)
+    assert np.isclose(shifted.exposure.sum(), params.exposure.sum())
+    assert np.isclose(shifted.weight.sum(), 1.0)
+    assert np.isclose(
+        shifted.loc[shifted["product"].eq("Consumer"), "exposure"].iloc[0]
+        - params.loc[params["product"].eq("Consumer"), "exposure"].iloc[0],
+        10.0,
     )
 
 
-def test_baseline_total_is_dynamic_sum_not_7tn():
-    b = sm.baseline_table(sample_df(), cfg())
-    assert np.isclose(b.exposure.sum(), 6573.0)
-    assert np.isclose(b.weight.sum(), 1.0)
+def test_thresholds_always_have_statuses():
+    params = sm.calculate_product_results(sample_params(), 0.5, "Base")
+    reverse = sm.reverse_stress(params, cfg())
+    assert reverse.status.notna().all()
+    assert reverse.loc[reverse.threshold.isna(), "status"].ne("FEASIBLE").all()
+    negative = reverse[reverse.threshold.lt(0, fill_value=False)]
+    assert negative.status.eq("NEGATIVE_THRESHOLD").all()
 
 
-def test_baseline_credit_cost_recomputed_directly():
-    b = sm.baseline_table(sample_df(), cfg()).set_index("product")
-    expected = 2 * 33.7 / ((1644.8 + 1525.9) / 2)
-    assert np.isclose(b.loc["Consumer", "credit_cost"], expected)
-
-
-def test_half_year_result_and_annualized_spread():
-    b = sm.baseline_table(sample_df(), cfg())
-    r = sm.calculate_product_results(b, 0.5, "Base")
-    c = r[r["product"] == "Consumer"].iloc[0]
-    spread = c.product_rate - c.funding_rate - c.credit_cost
-    assert np.isclose(c.credit_risk_adjusted_spread, spread)
-    assert np.isclose(c.risk_adjusted_financial_result_bn, c.exposure * spread * 0.5)
-
-
-def test_portfolio_mix_shift_keeps_a1_total_fixed():
-    b = sm.baseline_table(sample_df(), cfg())
-    s = sm.apply_portfolio_mix_shift(b, {"Consumer": 2.0, "Auto": 1.0, "Cards": 0.5})
-    assert np.isclose(s.exposure.sum(), b.exposure.sum())
-    assert np.isclose(s.weight.sum(), 1.0)
-    assert s.loc[s["product"] == "Mortgage", "weight"].iloc[0] < b.loc[b["product"] == "Mortgage", "weight"].iloc[0]
-
-
-def test_mortgage_market_rate_is_sensitivity_not_base_override():
-    b = sm.baseline_table(sample_df(), cfg())
-    assert np.isclose(b.loc[b["product"] == "Mortgage", "product_rate"].iloc[0], 0.09)
-    ms = sm.mortgage_pricing_sensitivity(sample_df(), cfg())
-    assert np.isclose(ms.mortgage_pricing_rate.min(), 0.09)
-    assert np.isclose(ms.mortgage_pricing_rate.max(), 0.178)
-
-
-def test_reverse_share_returns_status_even_if_no_threshold():
-    b = sm.baseline_table(sample_df(), cfg())
-    r = sm.calculate_product_results(b, 0.5, "Base")
-    rev = sm.reverse_stress(r, cfg())
-    x = rev[rev.reverse_type == "critical_product_share_vs_mortgage"]
-    assert set(x.target_product) == {"Consumer", "Auto", "Cards"}
-    assert x.status.notna().all()
-    assert x.threshold.isna().all()
-
-
-def test_reverse_stress_infeasible_values_are_na_and_mortgage_break_even_is_included():
-    b = sm.baseline_table(sample_df(), cfg())
-    b["product_rate"] = 0.0
-    b["funding_rate"] = 0.10
-    b["credit_cost"] = 0.01
-    r = sm.calculate_product_results(b, 0.5, "Base")
-    rev = sm.reverse_stress(r, cfg())
-    mult = rev[rev.reverse_type == "portfolio_credit_cost_multiplier"].iloc[0]
-    assert mult.status == "NO_NONNEGATIVE_SOLUTION"
-    assert np.isnan(mult.threshold)
-    mortgage = rev[(rev.reverse_type == "product_break_even_credit_cost") & (rev.target_product == "Mortgage")].iloc[0]
-    assert mortgage.status == "NO_NONNEGATIVE_BREAK_EVEN"
-    assert np.isnan(mortgage.threshold)
-
-
-def test_scenario_summary_uses_methodological_order():
-    rows = []
-    b = sm.baseline_table(sample_df(), cfg())
-    for scenario in reversed(sm.SCENARIO_ORDER):
-        rows.append(sm.calculate_product_results(b, 0.5, scenario))
-    summary = sm.scenario_summary(pd.concat(rows, ignore_index=True), 0.5)
-    assert summary.scenario.tolist() == sm.SCENARIO_ORDER
-
-
-def test_research_framing_is_loaded_from_config():
-    loaded = sm.load_config(ROOT / "config" / "model_config.json")
-    assert "синтет" in loaded.portfolio_nature.lower() or "synthetic" in loaded.portfolio_nature.lower()
-    assert loaded.research_title
-    assert loaded.primary_research_question
-
-
-def test_mix_scenarios_keep_financial_assumptions_and_total():
-    config = sm.load_config(ROOT / "config/model_config.json")
+def test_current_excel_passes_formula_qa_and_uses_model_data():
+    config = cfg()
+    assert config.data_sheet == "MODEL_DATA"
+    assert config.input_file.endswith("dataset_vtb_main_clean.xlsx")
     data = sm.load_dataset(ROOT / config.input_file, config.data_sheet)
-    products, _ = sm.build_scenarios(data, config)
-    summary = sm.scenario_summary(products, config.horizon_years)
+    qa = sm.validate_data(data, config)
+    assert not qa.status.eq("FAIL").any()
+    assert len(data) == 24
+
+
+def test_output_tables_are_compact_and_complete():
+    config = cfg()
+    data = sm.load_dataset(ROOT / config.input_file, config.data_sheet)
+    products = sm.build_scenarios(data, config)
+    summary = sm.scenario_summary(products)
+    critical = sm.critical_margin_table(products, config)
+    stress = sm.stress_critical_margin(products, config)
+    mix = sm.portfolio_mix_sensitivity(products, config)
+    assert summary.columns.tolist() == ["scenario", "risk_adjusted_financial_result_bn"]
     assert summary.scenario.tolist() == sm.SCENARIO_ORDER
-    assert summary.scenario_type.tolist() == ["baseline", "financial_stress", "financial_stress", "portfolio_mix", "combined"]
-    assert np.allclose(summary.exposure_bn, summary.exposure_bn.iloc[0])
-    for mix, financial, shift in [("PortfolioMix", "Base", "moderate"), ("SevereMix", "Severe", "severe")]:
-        actual = products[products.scenario.eq(mix)].set_index("product")
-        starting = products[products.scenario.eq(financial)].set_index("product")
-        pd.testing.assert_frame_equal(actual[["product_rate", "funding_rate", "credit_cost"]], starting[["product_rate", "funding_rate", "credit_cost"]], check_exact=True)
-        for product in sm.RISKIER_PRODUCTS:
-            assert np.isclose(actual.loc[product, "weight"] - starting.loc[product, "weight"], config.portfolio_mix_shift_pp[shift][product] / 100)
-
-
-def test_legacy_config_and_callable_aliases_preserve_results(tmp_path):
-    raw = json.loads((ROOT / "config/model_config.json").read_text(encoding="utf-8"))
-    current = sm.load_config(ROOT / "config/model_config.json")
-    raw["structural_shift_pp"] = raw.pop("portfolio_mix_shift_pp")
-    path = tmp_path / "legacy.json"
-    path.write_text(json.dumps(raw), encoding="utf-8")
-    legacy = sm.load_config(path)
-    assert legacy == current
-    base = sm.baseline_table(sample_df(), legacy)
-    pd.testing.assert_frame_equal(sm.apply_structural_shift(base, legacy.structural_shift_pp["moderate"]), sm.apply_portfolio_mix_shift(base, current.portfolio_mix_shift_pp["moderate"]), check_exact=True)
-    for old, new in sm.SCENARIO_ALIASES.items():
-        pd.testing.assert_frame_equal(sm.calculate_product_results(base, 0.5, old), sm.calculate_product_results(base, 0.5, new), check_exact=True)
-    raw["portfolio_mix_shift_pp"] = {"moderate": {"Consumer": 99}}
-    path.write_text(json.dumps(raw), encoding="utf-8")
-    with pytest.raises(ValueError, match="Conflicting"):
-        sm.load_config(path)
-
-
-def test_reverse_stress_preserves_already_below_boundary_interpretation():
-    results = sm.calculate_product_results(sm.baseline_table(sample_df(), cfg()), 0.5, "Base")
-    reverse = sm.reverse_stress(results, cfg())
-    shares = reverse[reverse.reverse_type.eq("critical_product_share_vs_mortgage")]
-    assert shares.status.eq("ALREADY_AT_OR_BELOW_BOUNDARY").all()
-    assert shares.threshold.isna().all()
-    multiplier = reverse[reverse.reverse_type.eq("portfolio_credit_cost_multiplier")].iloc[0]
-    assert multiplier.status == "THRESHOLD_BELOW_CURRENT_1X"
-    assert 0 <= multiplier.threshold < 1
+    assert critical["product"].tolist() == config.products
+    assert {"current_margin", "critical_margin", "required_margin_premium_vs_mortgage", "status"}.issubset(critical.columns)
+    assert stress.shape[0] == 4
+    assert mix.shape[0] == 9
