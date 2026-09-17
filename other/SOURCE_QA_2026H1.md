@@ -1,47 +1,57 @@
-# SOURCE_QA_2026H1 — status at 2026-09-09
+# Проверка источников — 17.09.2026
 
-## Official VTB source
+## Активный файл и арифметическая сверка
 
-The official VTB IFRS results archive lists **"Финансовая отчетность по МСФО за 6М 2026 года"**, file size 2.18 MB, publication date **28 July 2026**:
+Активный input — other/dataset_vtb_main_clean.xlsx, лист DATA_MASTER. Сравнение с v2 выполнено отдельно:
+24 строки и 9 колонок DATA_MASTER совпадают, включая компоненты 31.12.2025 и 30.06.2026.
+См. [сравнение Excel](DATASET_COMPARISON_2026-09-17.md). Новый MODEL_DATA не используется в текущей постановке.
 
-`https://www.vtb.ru/ir/statements/results/`
+Прямые формулы CC и ECL rate воспроизводятся в src/stress_model.py. В raw/baseline_components.csv сохраняются
+предыдущая, текущая и средняя экспозиции, резерв, переоценка ECL, исходные и рассчитанные ставки.
+Арифметическая сверка имеет статус PASS; она не является независимой сверкой первоисточника.
 
-The current workbook `other/dataset_vtb_main_v2.xlsx`, sheet `SOURCES`, contains this direct official PDF URL:
+## Банк России: VERIFIED_CBR_PAGE
 
-`https://www.vtb.ru/media-files/vtb.ru/sitepages/ir/statements/results/rus-vtb-group-ifrs-as-of-30-june-2026.pdf`
+Официальная [страница ставок за июнь 2026](https://www.cbr.ru/statistics/bank_sector/int_rat/0626/)
+открыта 17.09.2026; на ней указано обновление 10.08.2026. Подтверждены:
 
-### Verification attempts in the current environment
+| Показатель | Годовая ставка |
+|---|---:|
+| Рыночная ипотека | 17,8% |
+| Льготная ипотека | 5,7% |
+| Долгосрочные кредиты физлицам | 17,5% |
+| Автокредиты | 16,5% |
+| Краткосрочные кредиты физлицам | 31,2% |
+| Долгосрочные вклады физлиц | 10,9% |
+| Краткосрочные вклады физлиц | 13,0% |
 
-- The official archive entry and publication date were confirmed through the indexed VTB archive result.
-- Direct document retrieval through the web reader failed: the archive returned HTTP 502 and the direct PDF could not be fetched.
-- A separate direct HTTPS request reached the VTB host only after disabling local TLS certificate validation, but the host returned a 63-byte `Forbidden` response rather than the 2.18 MB PDF.
-- The in-app browser control required for a further interactive attempt is not available in this execution environment.
+Все эти ставки относятся к MARKET PROXY. Основной ипотечный proxy 17,8% не является фактической доходностью ВТБ.
+Ипотечные 9,0% — сохранённое значение датасета для отдельной чувствительности смешанной ставки заёмщика;
+на указанной странице оно не представлено как ставка рыночной ипотеки.
 
-Therefore the exact PDF page/note mapping for product exposure, ECL reserve and ECL remeasurement remains **PENDING**. No page or note numbers are inferred or invented. This is a source-level reproducibility gap, not a missing numeric model input.
+## ВТБ: PENDING
 
-## Current 2026H1 workbook reconciliation
+Официальная ссылка из SOURCES:
+[Отчётность ВТБ за 6М2026](https://www.vtb.ru/media-files/vtb.ru/sitepages/ir/statements/results/rus-vtb-group-ifrs-as-of-30-june-2026.pdf).
 
-The workbook contains all direct components required by the approved Base method. Values below are RUB bn except rates.
+Повторная проверка 17.09.2026:
+- прямой PDF не получен веб-инструментом: non-retryable fetch error;
+- прямое открытие [архива ВТБ](https://www.vtb.ru/ir/statements/results/) вернуло HTTP 502;
+- индексированный результат официального архива содержит запись отчётности за 6М2026, дату 28.07.2026 и размер 2,18 МБ, но не страницы с продуктовыми компонентами.
 
-| Product | Exposure 31.12.2025 | Exposure 30.06.2026 | Average exposure | ECL reserve 30.06.2026 | H1 2026 ECL remeasurement | ECL rate | Annualized credit cost |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Mortgage | 4,364.8 | 4,279.8 | 4,322.30 | 89.4 | 14.7 | 2.0889% | 0.6802% |
-| Consumer | 1,644.8 | 1,525.9 | 1,585.35 | 246.7 | 33.7 | 16.1675% | 4.2514% |
-| Auto | 560.7 | 543.9 | 552.30 | 96.9 | 12.0 | 17.8158% | 4.3455% |
-| Cards | 248.9 | 223.4 | 236.15 | 47.0 | 6.6 | 21.0385% | 5.5897% |
+Существование записи в архиве не подтверждает значения таблиц Excel. Статус сопоставления продуктовых
+экспозиций, резервов, переоценки ECL и их периметра — PENDING. Номера страниц и примечаний не установлены.
 
-Recalculation uses:
+В публичных результатах значения Excel нельзя представлять как независимо подтверждённые FACT.
+Они используются условно, как рабочие калибровочные входы, до сверки. Исторические попытки доступа от 09.09.2026
+также не завершили постраничное сопоставление.
 
-`ecl_rate = ecl_reserve / exposure_30.06.2026`
+## Что остаётся проверить
 
-`average_exposure = (exposure_31.12.2025 + exposure_30.06.2026) / 2`
+1. Точные страницы/примечания для четырёх экспозиций и компонентов ECL.
+2. Сопоставимость продуктового периметра 31.12.2025 и 30.06.2026.
+3. Сопоставимость определения переоценки ECL по продуктам и периодам.
+4. Влияние интеграции Почта Банка на периметр.
 
-`annualized_credit_cost = 2 * ecl_remeasurement_H1_2026 / average_exposure`
-
-For all four products the recalculated values match the workbook values within the configured tolerance (`1e-8`). The four-product 30.06.2026 exposure total is **RUB 6,573.0 bn**, calculated from the workbook rather than imposed as a constant.
-
-## Base-method decision
-
-The working Base continues to use the direct product formula because all required numeric components are present and internally consistent. Group CoR scaling is not used. It remains a documented fallback only if later page-level reconciliation shows that the product components are unavailable or non-comparable.
-
-The unresolved check is whether the 31.12.2025 and 30.06.2026 product scopes and the ECL remeasurement definition are comparable in the official notes. If the official PDF later contradicts the workbook, the conflict must be reconciled before changing Base.
+Group CoR scaling в Base не применяется. Если позднейшая сверка покажет несопоставимость компонентов,
+потребуется документированная смена метода; автоматическая подмена источника или формулы запрещена.

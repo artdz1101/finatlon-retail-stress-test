@@ -1,5 +1,15 @@
 # Context changelog
 
+## 2026-09-17 — новая постановка: credit-risk stress и независимые доли
+- Последующее явное задание заменило постановку critical margin: главный результат — эффекты +1 п.п. и critical product share при RAFR = 0.
+- Сравнены clean и v2: DATA_MASTER полностью совпадает (24 строки, 9 колонок). Единственный активный файл остаётся clean; активный лист изменён с MODEL_DATA на DATA_MASTER для прямых компонентов риска.
+- Восстановлены прямой CC, ECL rate, pricing − funding − CC, денежные потери и RAFR за 0,5 года.
+- Ипотечные 17,8% подтверждены на официальной странице Банка России и применяются как MARKET PROXY; исходные 9,0% сохранены в чувствительности, Excel не изменён.
+- Предварительные множители CC: 1 / 1,5 / 2; pricing и funding между сценариями фиксированы. Sigma, синтетическая маржа и произвольные совместные сдвиги из основной модели исключены.
+- Добавлены три независимые сетки от текущей доли до полного замещения ипотеки, компактная сводка из девяти строк, аналитические эффекты/пороги с численной сверкой и ипотечная/карточная чувствительность.
+- Обновлены тесты, блокнот, отчёт и активная документация. Предыдущие локальные outputs сохранены в outputs/archive/critical_margin_ea1fd65; полные новые сетки — outputs/raw/.
+- Повторная попытка доступа к официальному PDF ВТБ не завершила сверку; статус продуктовых компонентов остаётся PENDING.
+
 ## 2026-09-17 — synthetic margin and critical-margin methodology
 - Switched the active input to `other/dataset_vtb_main_clean.xlsx`, sheet `MODEL_DATA`.
 - Replaced `pricing - funding` as the primary income measure with `margin_anchor + lambda * (product_rate_proxy - weighted_product_rate)`.

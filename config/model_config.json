@@ -1,33 +1,56 @@
 {
-  "research_title": "Критическая маржа синтетического розничного кредитного портфеля в условиях стресса",
-  "portfolio_nature": "Синтетический четырёхпродуктовый портфель на публичных данных ВТБ и Банка России",
-  "primary_research_question": "Какой уровень дополнительной маржи должен обеспечивать более рискованный продукт, чтобы компенсировать кредитный риск относительно ипотеки?",
+  "research_title": "Стресс-тестирование продуктовой структуры синтетического розничного кредитного портфеля",
+  "primary_research_question": "Как рост доли Consumer, Auto или Cards за счёт Mortgage меняет кредитные потери и RAFR, и существует ли критическая доля продукта?",
   "input_file": "other/dataset_vtb_main_clean.xlsx",
-  "data_sheet": "MODEL_DATA",
+  "data_sheet": "DATA_MASTER",
   "baseline_date": "2026-06-30",
   "history_start_date": "2023-12-31",
   "history_end_date": "2026-06-30",
   "horizon_years": 0.5,
-  "products": ["Mortgage", "Consumer", "Auto", "Cards"],
-  "critical_result_bn": 0.0,
-  "scenario_calibration": {
-    "method": "absolute_percentage_point_shocks",
-    "moderate": {
-      "credit_cost_shift_pp": 1.0,
-      "margin_anchor_shift_pp": -0.5
-    },
-    "severe": {
-      "credit_cost_shift_pp": 3.0,
-      "margin_anchor_shift_pp": -1.0
-    }
+  "products": [
+    "Mortgage",
+    "Consumer",
+    "Auto",
+    "Cards"
+  ],
+  "critical_result_bn": 0,
+  "credit_cost_stress_multiplier": {
+    "Base": 1,
+    "Moderate": 1.5,
+    "Severe": 2
   },
-  "portfolio_mix_sensitivity": {
-    "share_changes_pp": [1.0, 5.0, 10.0],
-    "margin_policy": "fixed_calibrated_product_margins"
+  "stress_classification": "PROVISIONAL_MODEL_ASSUMPTION",
+  "stress_note": "Множители 1 / 1,5 / 2 — предварительные сценарные предположения; pricing и funding фиксированы.",
+  "mortgage_pricing_proxy": {
+    "rate": 0.178,
+    "classification": "MARKET PROXY",
+    "description": "Внешняя ставка по рыночной ипотеке Банка России; не фактическая доходность ВТБ.",
+    "source": "https://www.cbr.ru/statistics/bank_sector/int_rat/0626/",
+    "verification_status": "VERIFIED_CBR_PAGE"
   },
-  "reverse_stress": {
-    "include_critical_share": true
+  "product_mix": {
+    "share_step": 0.001
   },
-  "qa_tolerance": 1e-08,
+  "mortgage_pricing_sensitivity": {
+    "min_rate": 0.09,
+    "max_rate": 0.178,
+    "points": 89,
+    "lower_case": "Mortgage blended borrower rate including subsidized programmes"
+  },
+  "card_pricing_sensitivity": {
+    "discounts_pp": [
+      0,
+      5,
+      10,
+      15
+    ],
+    "classification": "MODEL ASSUMPTION",
+    "note": "Условные снижения внешнего карточного proxy; не оценки фактического card yield."
+  },
+  "source_qa": {
+    "vtb_product_components": "PENDING",
+    "note": "Постраничная сверка компонентов ВТБ остаётся открытой; совпадение Excel и формул не подтверждает первоисточник."
+  },
+  "qa_tolerance": 1e-8,
   "output_dir": "outputs"
 }

@@ -1,5 +1,7 @@
 # Source review — 2026-09-09
 
+> Архив обзора от 09.09.2026. Текущий источник — dataset_vtb_main_clean.xlsx / DATA_MASTER. Основная ипотечная ставка заменена на 17,8%, 9,0% сохранена в чувствительности. Актуальная проверка источников: SOURCE_QA_2026H1.md; сравнение файлов: DATASET_COMPARISON_2026-09-17.md. Приведённые ниже прежние решения не являются активной спецификацией.
+
 ## Current numeric source
 Use `other/dataset_vtb_main_v2.xlsx` for calculations.
 

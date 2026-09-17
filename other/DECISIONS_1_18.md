@@ -1,5 +1,7 @@
 # Final interpretation of methodology questionnaire 1–18
 
+> Историческая запись. Актуальная постановка от 17.09.2026 находится в MODEL_DECISIONS.md и AGENTS.md и имеет приоритет: прямой CC, CRAS = pricing − funding − CC, основной ипотечный MARKET PROXY 17,8%, 9,0% как чувствительность, предварительные множители CC 1/1,5/2, главные результаты — предельные эффекты и критические доли. Ниже сохранена история решений, включая уже отменённую постановку critical margin.
+
 This file records the user's current choices. They are revisable through `UPDATE_CONTEXT:`.
 
 ## Methodology update: synthetic margin and critical margin

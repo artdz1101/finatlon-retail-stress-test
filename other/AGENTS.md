@@ -1,150 +1,124 @@
 # AGENTS.md — Finatlon retail stress-test
 
-## Mission
-Build and iteratively improve the reproducible stress-test for the Finatlon scientific article. The research object is a four-product retail credit portfolio: Mortgage, Consumer, Auto and Cards. The active stage is **03 — stress model**. Stages 01 (dataset) and 02 (methodology) are already working stages completed enough to proceed; reopen them only when a new source or a model result creates a concrete reason.
+## Mission and source priority
 
-The repository is a **working research state**, not an immutable specification. The article may change materially.
+Build a reproducible research stress-test for a synthetic four-product retail portfolio.
+The active stage is 03 — stress model. Canonical paths: src/stress_model.py, config/model_config.json,
+tests/, notebooks/03_stress_model_calibration.ipynb, other/, outputs/.
 
-## Article framing
-- Working title: **«Стресс-тестирование риск-доходности продуктовой структуры розничного кредитного портфеля как инструмент управления рисками банка»**.
-- The research object is a **synthetic four-product retail credit portfolio calibrated on public VTB and Bank of Russia data**, not VTB as a bank and not a reconstruction of VTB's internal profitability or portfolio-management decisions.
-- Public VTB exposure values provide calibration anchors for the baseline size and weights. Once combined with external pricing/funding proxies and model assumptions, the resulting portfolio is synthetic and must not be presented as VTB's actual product economics.
-- Central research question: **what additional synthetic margin must a riskier product generate to compensate for credit risk relative to Mortgage?**
-- The intended scientific output is a set of economically interpretable thresholds and sensitivity results, not a catalogue of source fields or scenario tables.
-- Public-facing notebooks and article materials must read as research communication: problem, method, results, interpretation and limitations. Do not expose internal discussions, questionnaire history, implementation logs or environment-specific troubleshooting.
+Priority:
+1. Latest explicit user instructions.
+2. other/dataset_vtb_main_clean.xlsx, DATA_MASTER.
+3. This file, other/MODEL_DECISIONS.md and active config.
+4. Older datasets and decision files only for provenance.
 
-## Source priority
-Unless the user explicitly changes it:
-1. Latest explicit user instruction in the current session.
-2. Active numeric dataset in the repository (`other/dataset_vtb_main_clean.xlsx`, sheet `MODEL_DATA`).
-3. `other/AGENTS.md`, `other/MODEL_DECISIONS.md`, `other/DECISIONS_1_18.md`, `config/model_config.json`.
-4. Older datasets/chats only for provenance or unresolved gaps.
+The 17.09.2026 product-mix request supersedes the earlier critical-margin specification.
+Do not retain a superseded formula merely because tests pass. Keep the design simple.
 
-Do not silently average conflicting values. Use the higher-priority source and document a material conflict.
+## Research framing and communication
 
-## Context update command
-When the user writes:
+- Working title: «Стресс-тестирование риск-доходности продуктовой структуры розничного кредитного портфеля как инструмент управления рисками банка».
+- Main question: how does increasing Consumer / Auto / Cards at the expense of Mortgage affect credit losses and RAFR, and is there a critical share beyond which income no longer compensates for credit risk?
+- The portfolio combines VTB calibration anchors and external Bank of Russia rates. It is synthetic; it is not VTB's internal product economics.
+- Пишите пользователю и готовьте исследовательские материалы на русском; английские термины при первом употреблении поясняйте переводом/расшифровкой. Технические имена сохраняйте.
+- Public materials should communicate problem, method, results and limitations; do not expose internal questionnaire history or environment troubleshooting.
+- Check current context before asking questions. Use transparent provisional assumptions when explicitly permitted; document them.
+- UPDATE_CONTEXT and explicit methodological decisions update affected code, config, tests and documents plus other/CONTEXT_CHANGELOG.md.
 
-`UPDATE_CONTEXT: <instruction>`
+## Input and quality
 
-apply it as a project-level change. Update the affected context files/config/code/tests, append a short entry to `other/CONTEXT_CHANGELOG.md`, run relevant QA, and continue from the revised context. Do not keep an older default merely because it is already coded.
+Only other/dataset_vtb_main_clean.xlsx is active. DATA_MASTER contains exposure, ECL reserve,
+ECL remeasurement, pricing and funding. MODEL_DATA contains a previous synthetic-margin specification;
+it is not used in the current model. The v2 workbook remains an archive and must not be a silent fallback.
 
-Short numbered answers such as `1A 2B 3A...` are also project decisions and must be propagated into repository context when they affect the model.
+Baseline: 30.06.2026. Horizon: 2026H2 = 0.5 year. Products: Mortgage, Consumer, Auto, Cards.
+Total exposure is sum of the four baseline exposures, always dynamic; no 7 tn or hard-coded 6,573 bn constraint.
 
-## Interaction rules
-- Пишите пользователю и готовьте исследовательские материалы преимущественно на русском. При первом упоминании английского термина или сокращения приводите в скобках перевод и/или расшифровку; в таблицах и графиках предпочитайте русские подписи. Технические имена полей, функций, файлов и статусов сохраняйте, а их смысл поясняйте отдельно. Это правило относится и к последующим изменениям проекта.
-- Check current files/data before asking a question.
-- Do not ask again about a decision already present in context unless new evidence creates a real contradiction.
-- Prefer a transparent working default over blocking progress, but label it as provisional in ordinary language.
-- If a source cannot be verified, do not invent a value. Try the official source; if it is unavailable, use the documented fallback in `other/DATA_GAPS_AND_FALLBACKS.md` or keep the issue open.
-- Keep outputs reproducible and code/config easy to change.
+History contains six reporting dates from 31.12.2023 to 30.06.2026. It supports arithmetic QA and ranges,
+not robust regression, ML, tail inference or statistical calibration of stress. Reconstructed 2024 values
+remain auxiliary. Pochta Bank integration changes the perimeter into 2026H1; do not call all changes organic.
 
-## Provenance wording
-In public-facing research materials, clearly separate published facts, external market proxies, synthetic portfolio construction, scenario assumptions and formula-derived results. This is a conceptual provenance distinction, not a mandatory machine-readable label on every variable. Use normal precise wording.
+## Direct credit risk and financial result
 
-Always distinguish:
-- published VTB values from external Bank of Russia rates;
-- observed inputs from formula-derived values and scenario assumptions;
-- external funding proxies from VTB internal FTP;
-- the research credit-cost proxy from official product CoR;
-- model financial results from actual VTB profit, NIM, product margin or RAROC.
+average_exposure_i = (exposure_i,2025YE + exposure_i,2026H1) / 2
+credit_cost_i = 2 * ecl_remeasurement_i,H1 / average_exposure_i
+ecl_rate_i = ecl_reserve_i / exposure_i
 
-## Final methodological decisions from the 1–18 questionnaire
-The current selections are:
+Use the exact previous half-year date. Recompute Base CC from direct components; verify stored Excel formulas.
+ECL rate is a stock indicator; CC is a flow proxy, not official VTB product CoR. Group CoR scaling is only
+a documented fallback if direct components become unavailable/non-comparable, never an automatic Base.
 
-`1A 2B 3A 4A 5A 6-direct-first 7A 8A 9A 10A 11C 12A+B 13A 14A 15A(2023–2026H1) 16B 17B 18A1-sum`
+CRAS_i = pricing_i - funding_i - credit_cost_i
+RAFR_i,6M = exposure_i * CRAS_i * 0.5
+CreditLoss_i,6M = exposure_i * credit_cost_i * 0.5
 
-Detailed interpretation is in `other/DECISIONS_1_18.md`.
+Portfolio money results are sums; portfolio CRAS is exposure-weighted. No Opex, fees, taxes, capital,
+RWA, RAROC, optimization, Monte Carlo, PD/LGD model or macroeconometric layer. RAFR is not VTB profit.
 
-### Baseline and horizon
-- Baseline date: **30.06.2026 (2026H1)**.
-- Stress horizon: **2026H2**, i.e. 0.5 year.
-- Baseline perimeter: the four product exposures at 30.06.2026 from the current dataset, if source QA remains consistent.
-- Portfolio size is **not 7 tn by assumption**. It is calculated as `sum(exposure_i)` for the four baseline products. With the current dataset this is RUB 6,573.0 bn, but code must derive it dynamically.
-- Portfolio-mix experiments keep that baseline four-product total fixed and change only weights.
+## Mortgage and Cards proxies
 
-### History
-- Current usable repository window: **31.12.2023–30.06.2026** (six reporting dates / 24 product rows in the current Excel).
-- Use history for calibration, ranges, diagnostics and reasonableness checks.
-- Do not claim that six reporting dates are enough for a robust regression, ML model, tail distribution or causal inference.
-- This history is adequate for a transparent scenario/sensitivity/reverse-stress design, provided scenarios are treated as scenario assumptions rather than statistically estimated forecasts.
+Main Mortgage pricing proxy: 17.8%, Bank of Russia market mortgage rate for June 2026, MARKET PROXY.
+Never call it actual VTB yield. Preserve the workbook 9.0% blended borrower rate as separate sensitivity,
+covering at least 9.0% to 17.8%. Other pricing/funding come from the active workbook.
 
-### Missing/reconstructed history
-User selected 2B together with 16B. Interpret jointly:
-- reconstructed/interpolated values may remain in the working dataset for continuity;
-- only values obtainable through a strict reproducible identity should be treated as equivalent-quality calculated inputs for primary calibration;
-- midpoint/interpolation values are auxiliary and must not silently drive primary calibration;
-- the known 30.06.2024 exposure reconstruction affects adjacent credit-cost calculations, so current config excludes 30.06.2024 and 31.12.2024 credit-cost rows from the primary historical sigma calibration. This exclusion is a working QA rule and can be revised after source verification.
+Cards use the external short-term retail rate. It does not represent full card yield given grace,
+utilization, interchange, commissions and transactor/revolver mix. If no Cards adverse threshold exists,
+say it is conditional on the external proxy; never infer unrestricted permissible card growth.
+Always include card pricing sensitivity with an explicitly hypothetical range.
 
-## Credit risk
-Primary risk measure: annualized product credit-cost proxy.
+## Stress and product mix
 
-For product i and half-year t:
+Only Base, Moderate, Severe are main financial states. Pricing, funding and exposure are identical across
+them; only CC changes. Current multipliers 1 / 1.5 / 2 are PROVISIONAL MODEL ASSUMPTION,
+not final expert decisions or historical sigma estimates.
 
-`average_exposure_i,t = (exposure_i,t-1 + exposure_i,t) / 2`
+Three independent experiments: raise exactly one of Consumer, Auto, Cards by reducing Mortgage.
+The other two shares and total exposure are fixed. Start at current baseline share; end at current
+target share plus Mortgage share. Default step is 0.001; always include the exact feasible endpoint.
 
-`credit_cost_i,t = 2 * ecl_remeasurement_i,t / average_exposure_i,t`
+Keep four shares/exposures, total, losses, RAFR, annualized CRAS, delta losses and delta RAFR in the raw grid.
+Delta is relative to the original composition in the same financial state.
 
-`ecl_rate_i,t = ecl_reserve_i,t / exposure_i,t`
+Main marginal results:
+delta_RAFR_per_1pp = total * 0.5 * 0.01 * (CRAS_target - CRAS_Mortgage)
+delta_CreditLoss_per_1pp = total * 0.5 * 0.01 * (CC_target - CC_Mortgage)
 
-ECL rate is an additional stock indicator, not CoR.
+Compare analytical effects to numerical reallocation and raw grid.
 
-For 2026H1 Base, calculate credit cost **directly from the product components** when 31.12.2025 exposure, 30.06.2026 exposure and H1 2026 ECL remeasurement are available and source-consistent. Do not scale product credit cost by Group CoR in the main method.
+## Reverse stress and sensitivities
 
-If those product components become unavailable or prove non-comparable, follow the fallback hierarchy in `other/DATA_GAPS_AND_FALLBACKS.md`; Group CoR scaling is only a fallback/sensitivity, not Base.
+Primary boundary: RAFR_6M = 0. Search from baseline share upward for the first feasible adverse crossing.
+Return critical_share with a status; no fabricated thresholds.
+- FEASIBLE_ADVERSE_CROSSING: crossing inside feasible range.
+- NO_ADVERSE_CROSSING_WITHIN_FEASIBLE_RANGE: NA, no crossing.
+- ALREADY_AT_OR_BELOW_BOUNDARY: NA, initial state already at/below boundary.
 
-## Synthetic income
-The old `pricing - funding` specification is no longer the primary income measure. Use the inputs from `MODEL_DATA`:
+Secondary: portfolio CC multiplier at RAFR=0; own and marginal break-even CC may remain diagnostic only.
+Factor sensitivity separately applies pricing +/-100 bp, funding +/-100 bp, CC +/-100 bp.
+Negative CC from the isolated downward sensitivity is an explicit net-recovery assumption, not a Base input.
+PortfolioMix / SevereMix arbitrary combined shifts are not main results.
 
-`synthetic_margin_i,t = margin_anchor_t + lambda_t * (product_rate_proxy_i,t - weighted_product_rate_t)`
+## Source transparency
 
-The pricing variables remain market proxies and do not represent actual VTB product yields. `margin_anchor` and `lambda` are model assumptions from the active dataset and must not be silently changed.
+FACT: independently reconciled public data only.
+MARKET PROXY: CBR pricing/funding, including Mortgage 17.8%.
+SYNTHETIC: combined portfolio construction.
+MODEL ASSUMPTION: provisional stress multipliers and card sensitivity range.
+CALCULATED: CC, CRAS, RAFR, losses, marginal effects and shares.
 
-## Financial result
-Calculate both percentage and money results.
+VTB product exposure/ECL page/note mapping is currently PENDING. Formula consistency is not independent
+source reconciliation. Try official sources when useful; never invent page numbers or promote unverified
+workbook values to FACT. Document source access and reconciliation in other/SOURCE_QA_2026H1.md.
 
-Annualized percentage metric:
+## Outputs and verification
 
-`risk_adjusted_rate_i = synthetic_margin_i - credit_cost_i`
+Compact outputs: baseline_summary.csv (4 rows), scenario_summary.csv (3), product_mix_summary.csv (9),
+reverse_stress_auxiliary.csv, factor_sensitivity.csv, mortgage_pricing_sensitivity.csv,
+card_pricing_sensitivity.csv, QA and data adequacy reports, model_report.md.
+Full product_mix_grid.csv and calculation components belong in outputs/raw/.
 
-Six-month money result:
+Three main share figures, one per target, with Base/Moderate/Severe lines, baseline share, RAFR=0,
+and critical markers where feasible. Separate Mortgage sensitivity and optional Cards sensitivity plot.
 
-`risk_adjusted_financial_result_i_6M = exposure_i * risk_adjusted_rate_i * 0.5`
-
-`risk_adjusted_financial_result_P_6M = sum_i(risk_adjusted_financial_result_i_6M)`
-
-This is pre-operating and excludes fees/commissions, operating expenses, taxes and capital charges. Do not call it VTB profit, NIM, actual product margin or RAROC.
-
-## Opex, capital and RWA
-- No operating-cost layer in Base.
-- No product RWA/capital denominator in Base.
-- Do not calculate genuine product RAROC.
-- These can be added later only through an explicit context change.
-
-## Stress architecture
-Keep Base, Moderate and Severe. Moderate adds 1 p.p. to credit cost and subtracts 0.5 p.p. from `margin_anchor`; Severe adds 3 p.p. to credit cost and subtracts 1 p.p. from `margin_anchor`. Do not add separate GDP, unemployment, inflation or key-rate factors.
-
-Portfolio-mix analysis is secondary sensitivity. Increase Consumer, Auto or Cards at the expense of Mortgage while keeping total exposure fixed; recompute the weighted pricing proxy and synthetic margins for the changed composition.
-
-## Reverse stress
-The primary reverse-stress result is each product's `critical_margin`: the margin at which portfolio RAFR reaches zero. Calculate `required_margin_premium_vs_mortgage = critical_margin_i - current_mortgage_margin` for Consumer, Auto and Cards. Critical product share may remain only as a secondary result.
-
-If a threshold does not exist in the feasible domain, return `NA` with the direction/status. Do not force a number.
-
-## Required outputs
-`outputs/` should contain:
-- QA report;
-- data adequacy report;
-- baseline product results;
-- scenario product results;
-- compact scenario summary;
-- critical margin table;
-- stress critical margin table;
-- factor sensitivity;
-- portfolio-mix sensitivity;
-- reverse stress;
-- figures;
-- `model_report.md`.
-
-## Important scope limitation
-Pochta Bank integration creates a structural break into 2026H1. Baseline 30.06.2026 can still be used as a snapshot, but historical changes into that date must not automatically be interpreted as purely organic portfolio dynamics.
+Run pytest, full model, input/output QA and the research notebook. Validate the economic mechanism,
+not merely code execution or predetermined existence/absence of thresholds.
